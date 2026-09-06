@@ -1,0 +1,14 @@
+# Test/lint/type tooling. Never installed in production.
+pytest==9.1.*
+pytest-asyncio==1.4.*
+pytest-cov==7.1.*
+httpx==0.28.*
+ruff==0.16.*
+mypy==2.3.*
+types-python-dateutil==2.9.0.*
+types-python-jose==3.5.*
+faker==40.38.*
+# In-memory async DB driver for repository/router tests only — never a
+# substitute for Postgres in dev or prod, just avoids needing a live
+# container for every test run.
+aiosqlite==0.22.*

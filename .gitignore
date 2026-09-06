@@ -1,0 +1,29 @@
+# Python
+api/.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Env
+.env
+api/.env
+web/.env
+web/.env.local
+
+# Node
+web/node_modules/
+web/.next/
+web/out/
+
+# Data
+api/seed_data/*.xlsx
+*.db
+*.sqlite3
+
+# OS / editor
+.DS_Store
+*.log
