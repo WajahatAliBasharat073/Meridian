@@ -13,8 +13,8 @@ export function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <Card className="p-10 text-center flex flex-col items-center">
-      <div className="h-12 w-12 rounded-full bg-surface-2 flex items-center justify-center mb-4">
+    <Card className="p-10 sm:p-12 text-center flex flex-col items-center">
+      <div className="h-12 w-12 rounded-xl bg-surface-2 border border-border flex items-center justify-center mb-4">
         <Icon size={22} className="text-text-faint" aria-hidden />
       </div>
       <h3 className="text-base font-semibold text-text">{title}</h3>

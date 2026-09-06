@@ -125,3 +125,174 @@ export interface DashboardSummaryOut {
   reviews_overdue_count: number;
   readiness_pct: number | null;
 }
+
+export interface ProfileOut {
+  birth_date: string | null; // "YYYY-MM-DD"
+  life_expectancy_years: number | null;
+}
+
+export interface ProfileUpdate {
+  birth_date: string;
+  life_expectancy_years: number;
+}
+
+export interface CategoryBreakdownOut {
+  category: string;
+  done: number;
+  total: number;
+}
+
+export interface ConceptResourceOut {
+  label: string;
+  url: string | null;
+}
+
+export interface ConceptOut {
+  concept_id: number;
+  category: string;
+  title: string;
+  summary: string;
+  resources: ConceptResourceOut[];
+  phase: string;
+  current_mastery: MasteryLevel | null;
+}
+
+export interface ConceptAttemptInput {
+  concept_id: number;
+  mastery_level: MasteryLevel;
+  notes?: string;
+}
+
+export interface QuestionOut {
+  question_id: number;
+  category: string;
+  title: string;
+  source: string;
+  covered: boolean;
+}
+
+export interface CategoryCoverageOut {
+  category: string;
+  covered_count: number;
+  total_count: number;
+  pct: number;
+}
+
+export interface QuestionSummaryOut {
+  by_category: CategoryCoverageOut[];
+  covered_count: number;
+  total_count: number;
+  pct: number | null;
+}
+
+export interface DailyRecapOut {
+  recap_date: string;
+  total_blocks: number;
+  done_count: number;
+  partial_count: number;
+  not_done_count: number;
+  rescheduled_count: number;
+  completion_pct: number | null;
+  category_breakdown: CategoryBreakdownOut[];
+  problems_attempted: number;
+  deep_work_planned_minutes: number;
+  deep_work_actual_minutes: number;
+  headline: string;
+  suggestions: string[];
+}
+
+export type GoalStatus = "active" | "completed" | "abandoned";
+
+export interface GoalOut {
+  id: number;
+  title: string;
+  description: string | null;
+  category: string | null;
+  target_date: string | null;
+  progress_pct: number;
+  status: GoalStatus;
+  minutes_logged: number | null;
+}
+
+export interface GoalCreateInput {
+  title: string;
+  description?: string;
+  category?: string;
+  target_date?: string;
+}
+
+export interface GoalUpdateInput {
+  progress_pct?: number;
+  status?: GoalStatus;
+}
+
+export interface TimeBudgetOut {
+  id: number;
+  category: string;
+  minutes_per_week: number;
+  actual_minutes_this_week: number;
+}
+
+export interface TimeBudgetUpsertInput {
+  category: string;
+  minutes_per_week: number;
+}
+
+export type Mood = "difficult" | "normal" | "good" | "excellent";
+
+export interface DailyReflectionOut {
+  date: string;
+  mood: Mood;
+  what_got_in_the_way: string | null;
+  what_went_well: string | null;
+}
+
+export interface DailyReflectionUpsertInput {
+  mood: Mood;
+  what_got_in_the_way?: string;
+  what_went_well?: string;
+}
+
+export interface WeeklyCategoryMinutesOut {
+  category: string;
+  minutes: number;
+}
+
+export interface MoodCountOut {
+  mood: string;
+  count: number;
+}
+
+export interface WeeklyReviewOut {
+  window_start: string;
+  window_end: string;
+  total_minutes_logged: number;
+  days_active: number;
+  days_in_window: number;
+  completion_pct: number | null;
+  category_minutes: WeeklyCategoryMinutesOut[];
+  avg_focus_session_minutes: number | null;
+  rescheduled_count: number;
+  mood_distribution: MoodCountOut[];
+  what_went_well: string[];
+  what_to_improve: string[];
+}
+
+export interface GroqModelOut {
+  id: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+}
+
+export interface AISettingsOut {
+  api_key_set: boolean;
+  active_model: string;
+  models: GroqModelOut[];
+}
+
+export interface AISettingsUpdateInput {
+  api_key?: string;
+  active_model?: string;
+  enabled_model_ids?: string[];
+}

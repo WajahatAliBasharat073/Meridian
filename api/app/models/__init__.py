@@ -1,5 +1,7 @@
 from app.models.base import Base
+from app.models.concepts import Concept, ConceptAttempt
 from app.models.core import PrayerTimes, TimeBlock, User
+from app.models.goals import DailyReflection, Goal, TimeBudget
 from app.models.life import (
     Meal,
     MealPlan,
@@ -15,6 +17,7 @@ from app.models.life import (
 )
 from app.models.observations import Observation
 from app.models.problems import Curriculum, Problem, ProblemAttempt
+from app.models.questions import Question, QuestionCoverage
 from app.models.repetition import Mistake, Mock, Review
 
 __all__ = [
@@ -40,4 +43,11 @@ __all__ = [
     "OperatingRule",
     "Setting",
     "Observation",
+    "Concept",
+    "ConceptAttempt",
+    "Question",
+    "QuestionCoverage",
+    "Goal",
+    "TimeBudget",
+    "DailyReflection",
 ]

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { FieldLabel } from "@/components/ui/field-label";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 
 const PRAYERS = ["fajr", "sunrise", "zuhr", "asr", "maghrib", "isha"] as const;
 
@@ -55,41 +57,41 @@ export function TimeSpecField({
       </div>
 
       {mode === "clock" ? (
-        <input
+        <Input
           type="time"
           required
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full h-11 rounded-lg border border-border bg-surface-2 px-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
         />
       ) : (
         <div className="flex gap-2">
-          <select
+          <Select
             value={prayer}
             onChange={(e) => {
               const p = e.target.value as typeof prayer;
               setPrayer(p);
               emitPrayerSpec(p, offset);
             }}
-            className="h-11 rounded-lg border border-border bg-surface-2 px-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent capitalize"
+            className="capitalize flex-1"
           >
             {PRAYERS.map((p) => (
               <option key={p} value={p}>
                 {p}
               </option>
             ))}
-          </select>
-          <input
-            type="number"
-            value={offset}
-            onChange={(e) => {
-              const n = Number(e.target.value) || 0;
-              setOffset(n);
-              emitPrayerSpec(prayer, n);
-            }}
-            className="w-20 h-11 rounded-lg border border-border bg-surface-2 px-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
-            aria-label="Minutes offset"
-          />
+          </Select>
+          <div className="w-20 shrink-0">
+            <Input
+              type="number"
+              value={offset}
+              onChange={(e) => {
+                const n = Number(e.target.value) || 0;
+                setOffset(n);
+                emitPrayerSpec(prayer, n);
+              }}
+              aria-label="Minutes offset"
+            />
+          </div>
           <span className="flex items-center text-xs text-text-faint">min offset</span>
         </div>
       )}

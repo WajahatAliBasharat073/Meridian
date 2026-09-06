@@ -11,10 +11,10 @@ export function KpiCard({
 }) {
   return (
     <Card className="p-4">
-      <div className="text-3xl font-semibold tracking-tight tabular-nums" style={{ color: accent }}>
+      <div className="text-xs text-text-faint">{label}</div>
+      <div className="text-2xl sm:text-3xl font-semibold tracking-tight tabular-nums mt-2" style={{ color: accent }}>
         {value}
       </div>
-      <div className="text-xs text-text-faint mt-1">{label}</div>
     </Card>
   );
 }

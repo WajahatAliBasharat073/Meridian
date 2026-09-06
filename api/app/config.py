@@ -19,7 +19,10 @@ class Settings(BaseSettings):
     supabase_url: str = ""
 
     groq_api_key: str = ""
-    groq_model: str = "llama-3.3-70b-versatile"
+    # llama-3.3-70b-versatile was Groq's default here until its deprecation
+    # (shutdown 08/16/26) — openai/gpt-oss-120b is the currently active
+    # flagship model (see app/groq_models.py for the full current catalog).
+    groq_model: str = "openai/gpt-oss-120b"
     daily_token_budget: int = 200_000
 
     # Prayer-time anchor — Islamabad by default (design doc 5).

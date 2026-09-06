@@ -5,18 +5,29 @@ three together for a given use case."""
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.domain import BandwidthInput, DashboardSummary, Recommendation
+from app.domain import (
+    BandwidthInput,
+    DailyRecap,
+    DashboardSummary,
+    Recommendation,
+    TimeBlockFixture,
+    WeeklyReview,
+)
 from app.engines.bandwidth import MINUTES_PER_REVIEW
+from app.engines.daily_recap import compute_daily_recap
 from app.engines.recommender import recommend
 from app.engines.repetition import on_attempt
 from app.engines.summary import compute_dashboard_summary
+from app.engines.weekly_review import compute_weekly_review
 from app.models.core import TimeBlock
+from app.repositories import concepts as concepts_repo
+from app.repositories import goals as goals_repo
 from app.repositories import problems as problems_repo
 from app.repositories import reviews as reviews_repo
 from app.repositories import schedule as schedule_repo
@@ -123,6 +134,44 @@ async def submit_attempt(
     return outcome.due_date.isoformat(), outcome.interval_days
 
 
+async def submit_concept_attempt(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    concept_id: int,
+    mastery_level: str,
+    notes: str | None,
+    today: date,
+) -> tuple[str, int]:
+    """Same shape as `submit_attempt`, for the `ml_concept` subject type
+    the repetition engine and `reviews` table already support."""
+    previous_attempt = await concepts_repo.get_latest_attempt_for_concept(session, user_id, concept_id)
+
+    await concepts_repo.record_attempt(session, user_id, concept_id, mastery_level, notes)
+
+    existing_review = await reviews_repo.get_review_state(session, user_id, "ml_concept", concept_id)
+    previous_state = None
+    if existing_review is not None and previous_attempt is not None:
+        from app.domain import ReviewState
+
+        previous_state = ReviewState(
+            subject_type="ml_concept",
+            subject_id=concept_id,
+            due_date=existing_review.due_date,
+            interval_days=existing_review.interval_days,
+            current_level=previous_attempt.mastery_level,
+            overdue_days=existing_review.overdue_days,
+            last_result=existing_review.last_result,
+        )
+
+    engaged = True
+    outcome = on_attempt(previous_state, "ml_concept", concept_id, mastery_level, today, engaged=engaged)
+    if outcome is None:
+        return today.isoformat(), 0
+
+    await reviews_repo.upsert_review(session, user_id, outcome)
+    return outcome.due_date.isoformat(), outcome.interval_days
+
+
 async def get_dashboard_summary(
     session: AsyncSession, user_id: uuid.UUID, today: date, days_window: int = 14
 ) -> DashboardSummary:
@@ -144,3 +193,50 @@ async def get_current_block(session: AsyncSession, blocks: list[TimeBlock], sett
         if b.start_resolved and b.end_resolved and b.start_resolved <= now < b.end_resolved:
             return b
     return None
+
+
+async def get_daily_recap(
+    session: AsyncSession, user_id: uuid.UUID, recap_date: date, settings: Settings
+) -> DailyRecap:
+    prayer_times = await schedule_repo.get_or_compute_prayer_times(session, recap_date, settings)
+    blocks = await schedule_repo.get_blocks_for_date(session, user_id, recap_date, prayer_times)
+    block_fixtures = [
+        TimeBlockFixture(
+            category=b.category,
+            tier=b.tier,
+            status=b.status,
+            planned_minutes=b.planned_minutes,
+            actual_minutes=b.actual_minutes,
+        )
+        for b in blocks
+    ]
+    problems_attempted = await problems_repo.count_problems_attempted_on(session, user_id, recap_date)
+    return compute_daily_recap(block_fixtures, problems_attempted, recap_date)
+
+
+async def get_weekly_review(
+    session: AsyncSession, user_id: uuid.UUID, window_end: date, days: int = 7
+) -> WeeklyReview:
+
+    window_start = window_end - timedelta(days=days - 1)
+    blocks = await goals_repo.blocks_since(session, user_id, window_start)
+    reflections = await goals_repo.list_reflections_since(session, user_id, window_start)
+
+    block_fixtures = [
+        TimeBlockFixture(
+            category=b.category,
+            tier=b.tier,
+            status=b.status,
+            planned_minutes=b.planned_minutes,
+            actual_minutes=b.actual_minutes,
+        )
+        for b in blocks
+    ]
+    block_dates = [b.date for b in blocks]
+    mood_counts: dict[str, int] = {}
+    for r in reflections:
+        mood_counts[r.mood] = mood_counts.get(r.mood, 0) + 1
+
+    return compute_weekly_review(
+        block_fixtures, block_dates, mood_counts, window_start, window_end, days
+    )

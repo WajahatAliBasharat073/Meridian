@@ -165,3 +165,76 @@ class DashboardSummary:
     reviews_due_count: int
     reviews_overdue_count: int
     readiness_pct: float | None
+
+
+@dataclass(frozen=True)
+class TimeBlockFixture:
+    """A row from `time_blocks`, reduced to what the daily-recap engine
+    needs — the whole schedule (prayer, job, thesis, recovery, prep — not
+    interview prep alone), not a subset of categories."""
+
+    category: str
+    tier: str
+    status: str
+    planned_minutes: int
+    actual_minutes: int | None
+
+
+@dataclass(frozen=True)
+class CategoryBreakdown:
+    category: str
+    done: int
+    total: int
+
+
+@dataclass(frozen=True)
+class DailyRecap:
+    """A same-day, real-data-only look back at one day's schedule. No
+    fabricated numbers, no invented advice — every suggestion is a plain
+    restatement of a threshold crossed by an actual figure below."""
+
+    recap_date: date
+    total_blocks: int
+    done_count: int
+    partial_count: int
+    not_done_count: int
+    rescheduled_count: int
+    completion_pct: float | None
+    category_breakdown: list[CategoryBreakdown]
+    problems_attempted: int
+    deep_work_planned_minutes: int
+    deep_work_actual_minutes: int
+    headline: str
+    suggestions: list[str]
+
+
+@dataclass(frozen=True)
+class WeeklyCategoryMinutes:
+    category: str
+    minutes: int
+
+
+@dataclass(frozen=True)
+class MoodCount:
+    mood: str
+    count: int
+
+
+@dataclass(frozen=True)
+class WeeklyReview:
+    """A real-data-only look back at the last 7 days — same discipline as
+    DailyRecap: every line in what_went_well / what_to_improve restates
+    an actual figure, nothing inferred beyond what the numbers show."""
+
+    window_start: date
+    window_end: date
+    total_minutes_logged: int
+    days_active: int
+    days_in_window: int
+    completion_pct: float | None
+    category_minutes: list[WeeklyCategoryMinutes]
+    avg_focus_session_minutes: float | None
+    rescheduled_count: int
+    mood_distribution: list[MoodCount]
+    what_went_well: list[str]
+    what_to_improve: list[str]

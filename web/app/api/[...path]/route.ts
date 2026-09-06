@@ -54,3 +54,15 @@ export async function GET(req: NextRequest, ctx: RouteParams): Promise<NextRespo
 export async function POST(req: NextRequest, ctx: RouteParams): Promise<NextResponse> {
   return proxy(req, (await ctx.params).path);
 }
+
+export async function PUT(req: NextRequest, ctx: RouteParams): Promise<NextResponse> {
+  return proxy(req, (await ctx.params).path);
+}
+
+export async function PATCH(req: NextRequest, ctx: RouteParams): Promise<NextResponse> {
+  return proxy(req, (await ctx.params).path);
+}
+
+export async function DELETE(req: NextRequest, ctx: RouteParams): Promise<NextResponse> {
+  return proxy(req, (await ctx.params).path);
+}

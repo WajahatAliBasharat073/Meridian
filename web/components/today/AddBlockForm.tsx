@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { Alert } from "@/components/ui/alert";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field-label";
-import { Alert } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
 import { TimeSpecField } from "@/components/today/TimeSpecField";
 import { useCreateBlock } from "@/hooks/useMutations";
 import { ApiError } from "@/lib/api";
@@ -76,13 +77,12 @@ export function AddBlockForm({ date, onDone }: { date: string; onDone?: () => vo
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <div>
           <FieldLabel htmlFor="activity">Activity</FieldLabel>
-          <input
+          <Input
             id="activity"
             required
             value={activity}
             onChange={(e) => setActivity(e.target.value)}
             placeholder="e.g. DSA — new problem"
-            className="w-full h-11 rounded-lg border border-border bg-surface-2 px-3 text-sm text-text placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -94,14 +94,13 @@ export function AddBlockForm({ date, onDone }: { date: string; onDone?: () => vo
         <div className="grid grid-cols-2 gap-3">
           <div>
             <FieldLabel htmlFor="category">Category</FieldLabel>
-            <input
+            <Input
               id="category"
               list="category-suggestions"
               required
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               placeholder="e.g. InterviewPrep"
-              className="w-full h-11 rounded-lg border border-border bg-surface-2 px-3 text-sm text-text placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-accent"
             />
             <datalist id="category-suggestions">
               {KNOWN_CATEGORIES.map((c) => (
@@ -111,14 +110,13 @@ export function AddBlockForm({ date, onDone }: { date: string; onDone?: () => vo
           </div>
           <div>
             <FieldLabel htmlFor="planned-minutes">Planned minutes</FieldLabel>
-            <input
+            <Input
               id="planned-minutes"
               type="number"
               min={1}
               required
               value={plannedMinutes}
               onChange={(e) => setPlannedMinutes(Number(e.target.value) || 0)}
-              className="w-full h-11 rounded-lg border border-border bg-surface-2 px-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
         </div>
@@ -131,7 +129,7 @@ export function AddBlockForm({ date, onDone }: { date: string; onDone?: () => vo
                 key={t.value}
                 type="button"
                 onClick={() => setTier(t.value)}
-                className="h-9 px-3 rounded-md border text-xs transition-colors"
+                className="h-11 px-3 rounded-lg border text-xs transition-colors"
                 style={{
                   borderColor: tier === t.value ? "var(--accent)" : "var(--border)",
                   color: tier === t.value ? "var(--accent-strong)" : "var(--text-muted)",
@@ -146,11 +144,10 @@ export function AddBlockForm({ date, onDone }: { date: string; onDone?: () => vo
 
         <div>
           <FieldLabel htmlFor="what-to-do">What to do (optional)</FieldLabel>
-          <input
+          <Input
             id="what-to-do"
             value={whatToDo}
             onChange={(e) => setWhatToDo(e.target.value)}
-            className="w-full h-11 rounded-lg border border-border bg-surface-2 px-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 

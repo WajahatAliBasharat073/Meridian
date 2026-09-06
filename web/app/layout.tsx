@@ -17,8 +17,15 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Meridian",
+  title: {
+    default: "Meridian",
+    template: "%s · Meridian",
+  },
   description: "What do I do right now?",
+  icons: {
+    icon: "/brand/logo.svg",
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

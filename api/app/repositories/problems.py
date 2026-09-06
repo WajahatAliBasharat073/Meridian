@@ -6,7 +6,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain import AttemptFixture, ProblemFixture
@@ -105,6 +105,16 @@ async def get_latest_attempt_for_problem(
         mastery_level=a.mastery_level,
         key_insight=a.key_insight,
     )
+
+
+async def count_problems_attempted_on(session: AsyncSession, user_id: uuid.UUID, on_date: date) -> int:
+    result = await session.execute(
+        select(func.count(func.distinct(ProblemAttempt.problem_id))).where(
+            ProblemAttempt.user_id == user_id,
+            func.date(ProblemAttempt.attempted_at) == on_date,
+        )
+    )
+    return result.scalar_one()
 
 
 async def record_attempt(

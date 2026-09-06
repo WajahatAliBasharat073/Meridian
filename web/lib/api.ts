@@ -1,13 +1,30 @@
 import type {
+  AISettingsOut,
+  AISettingsUpdateInput,
   AttemptResult,
   BlockStatus,
+  ConceptAttemptInput,
+  ConceptOut,
+  DailyReflectionOut,
+  DailyReflectionUpsertInput,
+  DailyRecapOut,
   DashboardSummaryOut,
+  GoalCreateInput,
+  GoalOut,
+  GoalUpdateInput,
   MasteryLevel,
   ProblemOut,
+  ProfileOut,
+  ProfileUpdate,
+  QuestionOut,
+  QuestionSummaryOut,
   RecommendationOut,
   ReviewDueOut,
   TimeBlockOut,
+  TimeBudgetOut,
+  TimeBudgetUpsertInput,
   TodayOut,
+  WeeklyReviewOut,
 } from "./types";
 
 /** Carries the HTTP status (0 = the request never reached a server at
@@ -114,4 +131,95 @@ export function getProblems(pattern?: string, difficulty?: string): Promise<Prob
   if (difficulty) params.set("difficulty", difficulty);
   const qs = params.toString();
   return request<ProblemOut[]>(`/api/problems${qs ? `?${qs}` : ""}`);
+}
+
+export function getProfile(): Promise<ProfileOut> {
+  return request<ProfileOut>("/api/profile", { cache: "no-store" });
+}
+
+export function updateProfile(input: ProfileUpdate): Promise<ProfileOut> {
+  return request<ProfileOut>("/api/profile", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getDailyRecap(): Promise<DailyRecapOut> {
+  return request<DailyRecapOut>("/api/daily-recap", { cache: "no-store" });
+}
+
+export function getQuestions(category?: string): Promise<QuestionOut[]> {
+  const qs = category ? `?category=${encodeURIComponent(category)}` : "";
+  return request<QuestionOut[]>(`/api/questions${qs}`, { cache: "no-store" });
+}
+
+export function toggleQuestionCoverage(questionId: number): Promise<{ covered: boolean }> {
+  return request<{ covered: boolean }>(`/api/questions/${questionId}/toggle`, { method: "POST" });
+}
+
+export function getQuestionsSummary(): Promise<QuestionSummaryOut> {
+  return request<QuestionSummaryOut>("/api/questions/summary", { cache: "no-store" });
+}
+
+export function getConcepts(category?: string, phase?: string): Promise<ConceptOut[]> {
+  const params = new URLSearchParams();
+  if (category) params.set("category", category);
+  if (phase) params.set("phase", phase);
+  const qs = params.toString();
+  return request<ConceptOut[]>(`/api/concepts${qs ? `?${qs}` : ""}`, { cache: "no-store" });
+}
+
+export function submitConceptAttempt(input: ConceptAttemptInput): Promise<AttemptResult> {
+  return request<AttemptResult>("/api/concepts/attempts", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getGoals(statusFilter?: string): Promise<GoalOut[]> {
+  const qs = statusFilter ? `?status_filter=${encodeURIComponent(statusFilter)}` : "";
+  return request<GoalOut[]>(`/api/goals${qs}`, { cache: "no-store" });
+}
+
+export function createGoal(input: GoalCreateInput): Promise<GoalOut> {
+  return request<GoalOut>("/api/goals", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateGoal(goalId: number, input: GoalUpdateInput): Promise<GoalOut> {
+  return request<GoalOut>(`/api/goals/${goalId}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export function getTimeBudgets(): Promise<TimeBudgetOut[]> {
+  return request<TimeBudgetOut[]>("/api/time-budgets", { cache: "no-store" });
+}
+
+export function upsertTimeBudget(input: TimeBudgetUpsertInput): Promise<TimeBudgetOut> {
+  return request<TimeBudgetOut>("/api/time-budgets", { method: "PUT", body: JSON.stringify(input) });
+}
+
+export function deleteTimeBudget(budgetId: number): Promise<void> {
+  return request<void>(`/api/time-budgets/${budgetId}`, { method: "DELETE" });
+}
+
+export function getTodayReflection(): Promise<DailyReflectionOut | null> {
+  return request<DailyReflectionOut | null>("/api/reflections/today", { cache: "no-store" });
+}
+
+export function upsertTodayReflection(input: DailyReflectionUpsertInput): Promise<DailyReflectionOut> {
+  return request<DailyReflectionOut>("/api/reflections/today", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getWeeklyReview(): Promise<WeeklyReviewOut> {
+  return request<WeeklyReviewOut>("/api/weekly-review", { cache: "no-store" });
+}
+
+export function getAISettings(): Promise<AISettingsOut> {
+  return request<AISettingsOut>("/api/settings/ai", { cache: "no-store" });
+}
+
+export function updateAISettings(input: AISettingsUpdateInput): Promise<AISettingsOut> {
+  return request<AISettingsOut>("/api/settings/ai", { method: "PUT", body: JSON.stringify(input) });
 }
