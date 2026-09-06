@@ -31,7 +31,7 @@ jobs:
         run: source .venv/bin/activate && ruff check .
 
       - name: Typecheck
-        run: source .venv/bin/activate && mypy app
+        run: source .venv/bin/activate && mypy app scripts
 
       - name: Test
         run: source .venv/bin/activate && pytest -q --cov=app --cov-report=term-missing

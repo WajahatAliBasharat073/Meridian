@@ -4,6 +4,7 @@ from datetime import datetime, time
 from typing import Any
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     Date,
     ForeignKey,
@@ -27,7 +28,11 @@ class User(Base, TimestampMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String, unique=True)
-    settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    # Plain JSON on other dialects, JSONB on Postgres — lets tests use
+    # sqlite without losing JSONB in the real (Postgres-only) migration.
+    settings: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=dict
+    )
 
 
 class PrayerTimes(Base):

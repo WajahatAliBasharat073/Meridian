@@ -51,7 +51,7 @@ lint-api:
 typecheck: typecheck-api
 
 typecheck-api:
-	cd api && .venv/Scripts/python -m mypy app
+	cd api && .venv/Scripts/python -m mypy app scripts
 
 clean:
 	rm -rf api/.venv web/node_modules web/.next
