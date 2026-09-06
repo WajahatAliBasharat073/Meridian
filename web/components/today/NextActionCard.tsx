@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
 import { MASTERY_LEVELS } from "@/lib/mastery";
 import { useSubmitAttempt } from "@/hooks/useMutations";
 import type { RecommendationOut, RecommendQueue } from "@/lib/types";
@@ -30,7 +31,7 @@ export function NextActionCard({ recommendation }: { recommendation: Recommendat
 
   if (!recommendation) {
     return (
-      <Card className="p-6 text-center">
+      <Card className="p-6 text-center shadow-elevated">
         <p className="text-text font-medium">Nothing due right now.</p>
         <p className="text-text-faint text-sm mt-1">Reviews and curriculum are both clear — nice.</p>
       </Card>
@@ -46,7 +47,7 @@ export function NextActionCard({ recommendation }: { recommendation: Recommendat
   };
 
   return (
-    <Card className="p-0 overflow-hidden">
+    <Card className="p-0 overflow-hidden shadow-elevated border-border-strong">
       <CardHeader className="pb-3">
         <div>
           <div className="flex items-center gap-2 flex-wrap mb-1.5">
@@ -81,8 +82,8 @@ export function NextActionCard({ recommendation }: { recommendation: Recommendat
         )}
 
         {confirmation ? (
-          <div className="mt-4 rounded-lg border border-status-done/30 bg-status-done/10 p-3 text-sm text-text">
-            {confirmation}
+          <div className="mt-4">
+            <Alert variant="success">{confirmation}</Alert>
           </div>
         ) : (
           <fieldset className="mt-4" disabled={submitAttempt.isPending}>
@@ -96,7 +97,7 @@ export function NextActionCard({ recommendation }: { recommendation: Recommendat
                   size="sm"
                   variant="secondary"
                   onClick={() => handleRate(m)}
-                  className="flex-col h-auto py-2 px-3 gap-0.5"
+                  className="flex-col h-auto min-h-11 py-2 px-3 gap-0.5"
                   style={{ borderColor: m.colorVar }}
                 >
                   <span className="text-xs font-semibold" style={{ color: m.colorVar }}>

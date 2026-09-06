@@ -7,15 +7,36 @@ import type {
   TodayOut,
 } from "./types";
 
+/** Carries the HTTP status (0 = the request never reached a server at
+ * all) so callers can tell "you're logged out" apart from "the network
+ * is down" apart from "the server errored" — one generic message for
+ * all three is a real diagnosis dead-end, not just unpolished copy. */
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+  } catch {
+    throw new ApiError(0, "Network request failed");
+  }
+
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`${res.status} ${path}: ${text}`);
+    throw new ApiError(res.status, text || res.statusText);
   }
+
   return res.json() as Promise<T>;
 }
 

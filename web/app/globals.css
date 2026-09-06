@@ -35,11 +35,44 @@
   --mastery-l6: #4fae72;
 
   --danger: #e2645f;
+  --danger-soft: #2c1a19;
+  /* Semantic aliases — name a token by its purpose (warning/info) even
+     where the underlying value is shared with a domain token
+     (status-partial/accent), so call sites read as intent, not reuse. */
+  --warning: var(--status-partial);
+  --warning-soft: var(--status-partial-soft);
+  --info: var(--accent);
+  --info-soft: var(--accent-soft);
 
-  --radius: 10px;
+  /* Radius scale — three steps, used consistently: small controls
+     (badges, icon buttons), inputs/buttons, cards/panels. Pills use
+     rounded-full directly (radius = height/2 by definition). */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* Elevation — flat by default (this UI reads as a plane, not a stack
+     of cards); reserved for the one or two elements per screen that
+     should visually lift, e.g. the primary decision card. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -8px rgba(0, 0, 0, 0.45);
+
   --font-sans: var(--font-manrope), system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 }
+
+/*
+  Type scale (Tailwind's default size utilities, used consistently
+  rather than inventing a parallel token set):
+
+  Display  text-3xl (30px) font-semibold  tracking-tight   — one per screen, the hero (e.g. current-block activity name, login heading)
+  H1       text-xl  (20px) font-semibold                   — page/section title a user reads first
+  H2       text-lg  (18px) font-semibold                   — card headings (problem title, "Create your account")
+  Body     text-sm  (14px) font-normal                     — default reading text
+  Small    text-xs  (12px) font-medium                     — secondary metadata (timestamps, counts)
+  Caption  text-[11px]     font-medium tracking-wide        — micro-labels beneath a number/value
+  Label    text-xs  (12px) font-medium uppercase tracking-wide text-text-faint — eyebrows, section headers, form labels
+*/
 
 @theme inline {
   --color-bg: var(--bg);
@@ -60,8 +93,21 @@
   --color-status-partial: var(--status-partial);
   --color-status-rescheduled: var(--status-rescheduled);
   --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
+
+  /* Override Tailwind's own rounded-lg/rounded-xl values so every
+     existing `rounded-lg`/`rounded-xl` call site (controls vs. cards)
+     picks up one consistent scale instead of each guessing a number. */
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  --shadow-elevated: var(--shadow-md);
 }
 
 * {

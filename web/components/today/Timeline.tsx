@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, ChevronDown, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/button";
 import { categoryMeta } from "@/lib/category";
 import { formatTime12h } from "@/lib/time";
 import { useMarkBlockStatus } from "@/hooks/useMutations";
@@ -66,36 +67,29 @@ function Row({ block }: { block: TimeBlockOut }) {
           {style.label}
         </button>
 
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={() => setExpanded((e) => !e)}
           aria-label="More status options"
-          className="h-11 w-11 shrink-0 flex items-center justify-center text-text-faint hover:text-text"
+          className="shrink-0"
         >
           <ChevronDown size={16} className={cn("transition-transform", expanded && "rotate-180")} />
-        </button>
+        </Button>
       </div>
 
       {expanded && (
         <div className="flex gap-2 pb-3 px-1 pl-8">
-          <button
-            onClick={() => setStatus("PARTIAL")}
-            className="h-9 rounded-md border border-border px-3 text-xs text-text-muted hover:text-text hover:bg-surface-2"
-          >
+          <Button variant="secondary" size="sm" onClick={() => setStatus("PARTIAL")}>
             Partial
-          </button>
-          <button
-            onClick={() => setStatus("RESCHEDULED")}
-            className="h-9 rounded-md border border-border px-3 text-xs text-text-muted hover:text-text hover:bg-surface-2"
-          >
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => setStatus("RESCHEDULED")}>
             Reschedule
-          </button>
+          </Button>
           {block.status !== "NOT DONE" && (
-            <button
-              onClick={() => setStatus("NOT DONE")}
-              className="h-9 rounded-md border border-border px-3 text-xs text-text-muted hover:text-text hover:bg-surface-2 flex items-center gap-1"
-            >
+            <Button variant="secondary" size="sm" onClick={() => setStatus("NOT DONE")}>
               <RotateCcw size={12} /> Undo
-            </button>
+            </Button>
           )}
         </div>
       )}

@@ -1,6 +1,11 @@
-# CI/CD Setup
+# Release Engineering Setup
 
-This repo is configured for GitHub Actions with these environments:
+This repo is configured with these GitHub Actions workflows:
+
+- `Build & Quality Checks`: validates API, web, and local infrastructure config.
+- `Release & Deployment`: promotes a validated build into the selected environment.
+
+The deployment workflow supports these environments:
 
 - `dev-sandbox`
 - `staging`
@@ -25,7 +30,7 @@ Production manual deploys require `confirm_production=deploy-production`.
 ## What Is Active Now
 
 - Pull requests and protected branches run API lint, typecheck, tests, web lint, web build, and Docker Compose validation.
-- CD runs the same quality gate before deployment.
+- `Release & Deployment` runs the same quality gate before deployment.
 - The deploy job validates required environment variables and secrets.
 - Provider-specific deployment commands are intentionally isolated in `.github/workflows/cd.yml` until hosting is chosen; enabling deploys before replacing that hook will fail on purpose.
 - Commit `web/` with these workflows, because CI now builds the Next.js app.

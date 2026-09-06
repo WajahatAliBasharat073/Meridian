@@ -32,7 +32,7 @@ export function CurrentBlockCard({ block }: { block: TimeBlockOut | null }) {
 
   return (
     <Card
-      className="p-6 relative overflow-hidden"
+      className="p-6 relative overflow-hidden shadow-elevated"
       style={isPrayer ? { borderColor: "var(--prayer)", background: "var(--prayer-soft)" } : undefined}
     >
       <div className="flex items-center gap-2 mb-3">
@@ -45,7 +45,9 @@ export function CurrentBlockCard({ block }: { block: TimeBlockOut | null }) {
         )}
       </div>
 
-      <h2 className="text-3xl font-semibold text-text text-balance leading-tight">{block.activity}</h2>
+      <h2 className="text-3xl font-semibold tracking-tight text-text text-balance leading-tight">
+        {block.activity}
+      </h2>
 
       <div className="mt-4 flex items-baseline gap-3">
         <span className="text-sm text-text-muted tabular-nums">

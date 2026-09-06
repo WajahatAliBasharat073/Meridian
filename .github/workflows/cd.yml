@@ -1,4 +1,4 @@
-name: CD
+name: Release & Deployment
 
 on:
   push:
@@ -32,7 +32,7 @@ concurrency:
 
 jobs:
   select-environment:
-    name: Select Environment
+    name: Resolve Target Environment
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.select.outputs.environment }}
@@ -63,7 +63,7 @@ jobs:
           echo "environment=$environment" >> "$GITHUB_OUTPUT"
 
   quality-gate:
-    name: Quality Gate
+    name: Release Quality Gate
     needs: select-environment
     runs-on: ubuntu-latest
     steps:
@@ -103,7 +103,7 @@ jobs:
           npm run build
 
   deploy:
-    name: Deploy
+    name: Deploy to Environment
     needs: [select-environment, quality-gate]
     runs-on: ubuntu-latest
     environment:

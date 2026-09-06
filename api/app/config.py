@@ -11,7 +11,12 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://meridian:meridian@localhost:5432/meridian"
 
+    # Legacy HS256 shared-secret verification (older Supabase projects).
     supabase_jwt_secret: str = ""
+    # Needed for ES256/RS256 verification via the project's JWKS endpoint
+    # (current Supabase default — "JWT Signing Keys"). e.g.
+    # https://<ref>.supabase.co
+    supabase_url: str = ""
 
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"

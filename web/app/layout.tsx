@@ -23,8 +23,16 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" data-theme="dark" className={`${manrope.variable} ${plexMono.variable} h-full`}>
-      <body className="min-h-full">
+    <html
+      lang="en"
+      data-theme="dark"
+      className={`${manrope.variable} ${plexMono.variable} h-full`}
+      suppressHydrationWarning
+    >
+      {/* Some browser extensions (password managers, form-fillers) tag
+          <body> with their own attribute before React hydrates, which
+          React then reports as a mismatch — harmless, not a real bug. */}
+      <body className="min-h-full" suppressHydrationWarning>
         <QueryProvider>{children}</QueryProvider>
       </body>
     </html>

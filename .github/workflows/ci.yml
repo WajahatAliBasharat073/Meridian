@@ -1,4 +1,4 @@
-name: CI
+name: Build & Quality Checks
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   api:
-    name: API
+    name: API Checks
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -41,7 +41,7 @@ jobs:
         run: pytest -q --cov=app --cov-report=term-missing
 
   web:
-    name: Web
+    name: Web Checks
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -68,7 +68,7 @@ jobs:
         run: npm run build
 
   docker-compose:
-    name: Compose Config
+    name: Infrastructure Config
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
