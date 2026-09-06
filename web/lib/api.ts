@@ -1,9 +1,11 @@
 import type {
   AttemptResult,
   BlockStatus,
+  DashboardSummaryOut,
   MasteryLevel,
   RecommendationOut,
   ReviewDueOut,
+  TimeBlockOut,
   TodayOut,
 } from "./types";
 
@@ -55,6 +57,25 @@ export function setBlockStatus(
   });
 }
 
+export interface BlockCreateInput {
+  date: string; // "YYYY-MM-DD"
+  start_spec: string;
+  end_spec: string;
+  activity: string;
+  tier: "T1" | "T2" | "T3" | "T4";
+  category: string;
+  planned_minutes: number;
+  what_to_do?: string;
+  notes?: string;
+}
+
+export function createBlock(input: BlockCreateInput): Promise<TimeBlockOut> {
+  return request<TimeBlockOut>("/api/blocks", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export interface AttemptInput {
   problem_id: number;
   mastery_level: MasteryLevel;
@@ -80,4 +101,8 @@ export function getRecommend(minutes?: number, energy?: number): Promise<Recomme
 
 export function getReviewsDue(): Promise<ReviewDueOut[]> {
   return request<ReviewDueOut[]>("/api/reviews/due");
+}
+
+export function getDashboardSummary(): Promise<DashboardSummaryOut> {
+  return request<DashboardSummaryOut>("/api/dashboard/summary", { cache: "no-store" });
 }

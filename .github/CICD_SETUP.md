@@ -1,91 +1,204 @@
 # Release Engineering Setup
 
-This repo is configured with these GitHub Actions workflows:
+## Current-State Audit
 
-- `Build & Quality Checks`: validates API, web, and local infrastructure config.
-- `Release & Deployment`: promotes a validated build into the selected environment.
+Observed locally on this repository:
 
-The deployment workflow supports these environments:
+- Repository: single monorepo named `Meridian`.
+- Current branch: `main`.
+- Remote branch refs: `origin/main` only.
+- Local default remote HEAD: not configured (`refs/remotes/origin/HEAD` is missing).
+- Remote URL: `git@github-personal:WajahatAliBasharat073/Meridian.git`.
+- Remote inspection failed locally because the SSH host alias `github-personal` is not resolvable in this shell.
+- Tags: none.
+- Commit history: six linear commits, all on `main`.
+- Frontend and backend share the same repository and same branch.
+- No dedicated `develop`, `staging`, `qa`, `uat`, `release/*`, or `hotfix/*` branches exist.
+- No evidence of merge commits, release tags, or a formal PR/release process in Git history.
+- Infrastructure in Git: local `docker-compose.yml` for Postgres only.
+- Backend: FastAPI in `api/`, Python 3.12, Alembic, Supabase/Postgres-oriented configuration.
+- Frontend: Next.js in `web/`, App Router, TypeScript, server-side API proxy.
+- Runtime secret templates are present in `api/.env.example` and `web/.env.example`.
+- Real secrets are ignored by Git through root and web `.gitignore` files.
 
-- `dev-sandbox`
-- `staging`
-- `qa`
-- `uat`
-- `production`
+## Decision
 
-## Branch and Release Flow
+Use a trunk-based monorepo strategy:
 
-| Source | Environment |
-| --- | --- |
-| `develop` | `dev-sandbox` |
-| `staging` | `staging` |
-| `qa` | `qa` |
-| `uat` | `uat` |
-| `main` | `production` |
-| `v*.*.*` tag | `production` |
-| Manual `workflow_dispatch` | selected environment |
+- `main` is the single protected integration branch.
+- Short-lived branches are used for work: `feature/*`, `bugfix/*`, `hotfix/*`, and optionally `chore/*`.
+- Production releases are created from immutable tags: `vMAJOR.MINOR.PATCH`.
+- Do not add permanent `develop`, `staging`, `qa`, or `uat` branches at this stage.
 
-Production manual deploys require `confirm_production=deploy-production`.
+This is the best fit for the current project because the repo is young, the team appears small, frontend and backend are tightly coupled, and there is no evidence of long-lived parallel release trains. Permanent environment branches would add merge overhead without solving a current operational problem.
 
-## What Is Active Now
+## Branches vs Environments
 
-- Pull requests and protected branches run API lint, typecheck, tests, web lint, web build, and Docker Compose validation.
-- `Release & Deployment` runs the same quality gate before deployment.
-- The deploy job validates required environment variables and secrets.
-- Provider-specific deployment commands are intentionally isolated in `.github/workflows/cd.yml` until hosting is chosen; enabling deploys before replacing that hook will fail on purpose.
-- Commit `web/` with these workflows, because CI now builds the Next.js app.
+Branches are code organization and review boundaries. Environments are deployed runtime targets. They do not need to map one-to-one.
 
-## Required GitHub Permissions
+Recommended environment model:
 
-For the `wajahatalibasharat073` GitHub account or organization, the person wiring this up needs:
-
-- Admin access to the repository.
-- Permission to create and edit GitHub Actions workflows.
-- Permission to create GitHub Environments.
-- Permission to add repository and environment secrets/variables.
-- Permission to configure branch protection rules.
-- Permission to approve production deployments, if using required reviewers.
-
-If I am doing it directly through a GitHub connection, grant access only to this repository and allow workflow, environment, secret, and deployment management.
-
-## Recommended Environment Protection
-
-| Environment | Reviewers | Branch restrictions |
+| Environment | Source | Purpose |
 | --- | --- | --- |
-| `dev-sandbox` | optional | `develop` |
-| `staging` | optional | `staging` |
-| `qa` | QA owner | `qa` |
-| `uat` | product/business owner | `uat` |
-| `production` | owner/admin required | `main`, tags `v*.*.*` |
+| Local Development | developer machine | Fast iteration with local `.env` files |
+| Pull Request Preview | PR branch | Optional web/API preview after hosting is chosen |
+| Staging | latest protected `main` | Production-like validation before release |
+| Production | signed/versioned `v*.*.*` tag | User-facing stable release |
 
-Protect `main` with required PR review and required CI status checks.
+QA/UAT should be GitHub Environments or preview deployments, not permanent branches, unless a larger team later needs long-running acceptance windows.
 
-## Required Environment Variables
+## Workflow Files
 
-Add these as GitHub Environment variables for each environment:
+| File | Workflow name | Purpose |
+| --- | --- | --- |
+| `.github/workflows/pull-request-quality.yml` | `Pull Request Quality Gate` | Detect changed paths, run relevant backend/frontend/platform checks, and emit one required final status |
+| `.github/workflows/security-scanning.yml` | `Security Scanning` | CodeQL analysis for Python and TypeScript |
+| `.github/workflows/deploy-staging.yml` | `Deploy Staging` | Validate `main`, then deploy to staging when provider hooks are configured |
+| `.github/workflows/deploy-production.yml` | `Deploy Production` | Deploy version tags or approved manual refs to production |
+| `.github/dependabot.yml` | Dependabot | Weekly dependency and GitHub Actions update PRs |
 
-- `APP_URL`: public web app URL for that environment.
-- `API_BASE_URL`: public API URL for that environment.
-- `DEPLOY_ENABLED`: set to `false` until provider-specific deploy commands are added, then `true`.
+Old generic `CI` and branch-mapped `CD` workflows were removed because they did not match the actual branch model and caused deployment runs to imply missing non-existent environment branches.
 
-## Required Environment Secrets
+## Pull Request Rules
 
-Add these as GitHub Environment secrets for each environment:
+Protect `main` and require:
 
-- `WEB_DEPLOY_TOKEN`: deploy token for the selected web host.
-- `API_DEPLOY_TOKEN`: deploy token for the selected API host.
-- `DATABASE_URL`: deployed Postgres/Supabase connection string.
-- `SUPABASE_JWT_SECRET`: JWT verification secret for deployed API auth.
-- `GROQ_API_KEY`: required once the Groq layer is enabled.
+- Pull request before merge.
+- `Required Quality Gate` from the `Pull Request Quality Gate` workflow.
+- `Security Scanning` for code changes if GitHub code scanning is enabled.
+- At least one approval when more than one maintainer is active.
+- Linear history or squash merge for a clean release trail.
+- No direct pushes to `main`, except emergency owner break-glass access.
 
-Provider-specific setups may add more secrets, for example Vercel project/org IDs, AWS role ARN, Render service IDs, Railway project IDs, or Fly tokens.
+## Deployment Flow
 
-## Hosting Choice Still Needed
+```text
+feature/* or bugfix/*
+        |
+        v
+Pull Request
+        |
+        v
+Path-scoped quality gates + security scanning
+        |
+        v
+Merge to protected main
+        |
+        v
+Deploy Staging
+        |
+        v
+Smoke tests and manual verification
+        |
+        v
+Create tag vMAJOR.MINOR.PATCH
+        |
+        v
+Deploy Production with environment approval
+```
 
-Before CD can deploy real infrastructure, choose where each piece should run:
+## Staging Deployment
 
-- Web: Vercel is the natural fit for Next.js.
-- API: Render, Railway, Fly.io, AWS ECS/App Runner, Azure Container Apps, or Google Cloud Run all work.
-- Database/Auth: Supabase matches the current design notes.
+`Deploy Staging` runs on every push to `main`.
 
-Once those are chosen, replace the `Deployment provider hook` step in `.github/workflows/cd.yml` with the exact deploy commands and keep all credentials in GitHub Environment secrets.
+Until hosting is selected, the deployment job is intentionally disabled unless the `staging` GitHub Environment has `DEPLOY_ENABLED=true`. Once enabled, the provider deployment hook must be replaced with real commands or a checked-in deploy script.
+
+Required staging environment variables:
+
+- `APP_URL`
+- `API_BASE_URL`
+- `DEPLOY_ENABLED`
+
+Required staging environment secrets:
+
+- `WEB_DEPLOY_TOKEN`
+- `API_DEPLOY_TOKEN`
+- `DATABASE_URL`
+- `SUPABASE_JWT_SECRET`
+- `GROQ_API_KEY` once the Groq layer is enabled
+
+## Production Deployment
+
+Production deployment is controlled by tags or manual dispatch:
+
+- Preferred: create a tag like `v1.0.0`.
+- Emergency/manual: run `Deploy Production`, provide `release_ref`, and type `deploy-production`.
+
+Configure the `production` GitHub Environment with required reviewers before setting `DEPLOY_ENABLED=true`.
+
+Required production environment variables and secrets are the same as staging, but with production values.
+
+## Rollback Strategy
+
+Use immutable release tags:
+
+1. Identify the last known good tag.
+2. Run `Deploy Production` manually.
+3. Set `release_ref` to that tag.
+4. Type `deploy-production`.
+5. Verify `/health` and the web `APP_URL`.
+
+Database rollback should be handled separately and carefully. Prefer backward-compatible migrations, expand-and-contract changes, and backups before destructive schema changes. Avoid automatic production downgrades unless the migration is explicitly designed and tested for rollback.
+
+## Frontend and Backend Repository Strategy
+
+Keep a monorepo with shared branches.
+
+Reasons:
+
+- The frontend and backend are product-coupled today.
+- API compatibility is easier to review when client and server changes live in one PR.
+- The repo is small enough that multi-repo overhead would outweigh the benefit.
+- Path-scoped workflows provide independent CI without splitting Git history.
+- Security boundaries are currently handled by secrets, environments, and least-privilege workflow permissions, not by repository separation.
+
+Consider splitting repositories later only if separate teams own frontend/backend, release cadences diverge significantly, or access control requires different contributor populations.
+
+## GitHub Permissions Needed
+
+For `WajahatAliBasharat073/Meridian`, setup requires:
+
+- Repository admin access.
+- Permission to manage Actions workflows.
+- Permission to create GitHub Environments.
+- Permission to add environment variables and secrets.
+- Permission to configure branch protection.
+- Permission to configure code scanning and Dependabot alerts.
+- Permission to create releases and tags.
+
+## Manual Setup Commands
+
+Create working branches only when needed:
+
+```bash
+git checkout main
+git pull --ff-only
+git checkout -b feature/my-change
+```
+
+Open a PR into `main`, then after staging passes:
+
+```bash
+git checkout main
+git pull --ff-only
+git tag -a v0.1.0 -m "Release v0.1.0"
+git push origin v0.1.0
+```
+
+Emergency rollback:
+
+```bash
+git tag --list "v*.*.*"
+```
+
+Then run `Deploy Production` manually in GitHub Actions with `release_ref` set to the chosen previous tag.
+
+## Hosting Still Needed
+
+Provider-specific deployment is not wired yet. Choose:
+
+- Web: Vercel is the natural fit for the Next.js app.
+- API: Render, Railway, Fly.io, AWS App Runner/ECS, Azure Container Apps, or Google Cloud Run.
+- Database/Auth: Supabase matches the current application design.
+
+After choosing hosting, replace the provider hook steps in `deploy-staging.yml` and `deploy-production.yml` with real deploy commands and keep provider credentials in GitHub Environment secrets.

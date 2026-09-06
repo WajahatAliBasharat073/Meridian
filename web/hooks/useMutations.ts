@@ -1,5 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { setBlockStatus, submitAttempt, type AttemptInput } from "@/lib/api";
+import {
+  createBlock,
+  setBlockStatus,
+  submitAttempt,
+  type AttemptInput,
+  type BlockCreateInput,
+} from "@/lib/api";
 import type { BlockStatus, TodayOut } from "@/lib/types";
 import { TODAY_QUERY_KEY } from "./useToday";
 
@@ -42,6 +48,20 @@ export function useMarkBlockStatus() {
     },
 
     onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: TODAY_QUERY_KEY });
+    },
+  });
+}
+
+/** New blocks always land after the day's schedule is refetched (their
+ * server-assigned seq isn't knowable client-side), so no optimistic
+ * insert — just invalidate once the write lands. */
+export function useCreateBlock() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: BlockCreateInput) => createBlock(input),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TODAY_QUERY_KEY });
     },
   });

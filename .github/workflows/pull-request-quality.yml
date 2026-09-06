@@ -1,0 +1,156 @@
+name: Pull Request Quality Gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      platform: ${{ steps.filter.outputs.platform }}
+      workflow: ${{ steps.filter.outputs.workflow }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: filter
+        name: Classify changed paths
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            changed_files="$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD)"
+          else
+            changed_files="$(git ls-files)"
+          fi
+
+          echo "$changed_files"
+
+          set_output() {
+            name="$1"
+            pattern="$2"
+            if echo "$changed_files" | grep -Eq "$pattern"; then
+              echo "$name=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$name=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+
+          set_output backend '^(api/|docker-compose\.yml$)'
+          set_output frontend '^web/'
+          set_output platform '^(\.github/|docs/|README\.md$|docker-compose\.yml$)'
+          set_output workflow '^\.github/workflows/'
+
+  backend:
+    name: Backend Checks
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.workflow == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            api/requirements.txt
+            api/requirements-dev.txt
+            api/requirements.lock
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Typecheck
+        run: mypy app scripts
+
+      - name: Test
+        run: pytest -q --cov=app --cov-report=term-missing
+
+      - name: Audit runtime dependencies
+        run: |
+          python -m pip install pip-audit
+          pip-audit -r requirements.lock
+
+      - name: Build API image
+        run: docker build -f Dockerfile .
+
+  frontend:
+    name: Frontend Checks
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.workflow == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        env:
+          API_BASE_URL: http://localhost:8000
+        run: npm run build
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  platform:
+    name: Platform Checks
+    needs: changes
+    if: needs.changes.outputs.platform == 'true' || needs.changes.outputs.workflow == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate Docker Compose config
+        run: docker compose config --quiet
+
+  quality-gate:
+    name: Required Quality Gate
+    needs: [changes, backend, frontend, platform]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate required checks
+        run: |
+          echo "backend=${{ needs.backend.result }}"
+          echo "frontend=${{ needs.frontend.result }}"
+          echo "platform=${{ needs.platform.result }}"
+
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ]; then
+            exit 1
+          fi
+
+          if [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            exit 1
+          fi

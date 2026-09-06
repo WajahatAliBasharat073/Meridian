@@ -83,3 +83,31 @@ export interface TodayOut {
   counters: TodayCounters;
   prayer_accuracy_minutes: [number, number];
 }
+
+export interface MasteryCountOut {
+  level: MasteryLevel;
+  count: number;
+}
+
+export interface PatternCoverageOut {
+  pattern: string;
+  scheduled_count: number;
+  l5_plus_count: number;
+  ratio: number;
+}
+
+export interface AttemptsByDayOut {
+  day: string;
+  count: number;
+}
+
+export interface DashboardSummaryOut {
+  total_problems: number;
+  attempted_count: number;
+  mastery_distribution: MasteryCountOut[];
+  pattern_coverage: PatternCoverageOut[];
+  attempts_by_day: AttemptsByDayOut[];
+  reviews_due_count: number;
+  reviews_overdue_count: number;
+  readiness_pct: number | null;
+}

@@ -11,10 +11,11 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.domain import BandwidthInput, Recommendation
+from app.domain import BandwidthInput, DashboardSummary, Recommendation
 from app.engines.bandwidth import MINUTES_PER_REVIEW
 from app.engines.recommender import recommend
 from app.engines.repetition import on_attempt
+from app.engines.summary import compute_dashboard_summary
 from app.models.core import TimeBlock
 from app.repositories import problems as problems_repo
 from app.repositories import reviews as reviews_repo
@@ -120,6 +121,21 @@ async def submit_attempt(
 
     await reviews_repo.upsert_review(session, user_id, outcome)
     return outcome.due_date.isoformat(), outcome.interval_days
+
+
+async def get_dashboard_summary(
+    session: AsyncSession, user_id: uuid.UUID, today: date, days_window: int = 14
+) -> DashboardSummary:
+    review_states = await reviews_repo.get_problem_reviews(session, user_id)
+    problem_fixtures = await problems_repo.get_problem_fixtures(session)
+    attempt_fixtures = await problems_repo.get_attempt_fixtures(session, user_id)
+    return compute_dashboard_summary(
+        problems=problem_fixtures,
+        attempts=attempt_fixtures,
+        reviews=review_states,
+        today=today,
+        days_window=days_window,
+    )
 
 
 async def get_current_block(session: AsyncSession, blocks: list[TimeBlock], settings: Settings) -> TimeBlock | None:

@@ -50,7 +50,7 @@ export default function LoginPage() {
     // fresh session cookie on the very next request (proxy.ts). Stay in
     // the loading state until the browser actually leaves this page.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.assign("/today");
+    window.location.assign("/dashboard");
   };
 
   const switchMode = (next: Mode) => {

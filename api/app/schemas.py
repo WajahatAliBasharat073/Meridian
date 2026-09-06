@@ -33,6 +33,20 @@ class BlockStatusUpdate(BaseModel):
     actual_minutes: int | None = None
 
 
+class BlockCreate(BaseModel):
+    date: date
+    # Absolute ("17:05") or prayer-relative ("maghrib+15m", "asr") — same
+    # grammar app/engines/scheduling.py already resolves for seeded blocks.
+    start_spec: str = Field(min_length=1)
+    end_spec: str = Field(min_length=1)
+    activity: str = Field(min_length=1)
+    tier: Literal["T1", "T2", "T3", "T4"] = "T2"
+    category: str = Field(min_length=1)
+    planned_minutes: int = Field(gt=0)
+    what_to_do: str | None = None
+    notes: str | None = None
+
+
 class RecommendationOut(BaseModel):
     problem_id: int
     title: str
@@ -92,3 +106,31 @@ class TodayOut(BaseModel):
     bandwidth: BandwidthOut | None = None
     counters: TodayCounters
     prayer_accuracy_minutes: tuple[int, int] = Field(default=(5, 15))
+
+
+class MasteryCountOut(BaseModel):
+    level: MasteryLevel
+    count: int
+
+
+class PatternCoverageOut(BaseModel):
+    pattern: str
+    scheduled_count: int
+    l5_plus_count: int
+    ratio: float
+
+
+class AttemptsByDayOut(BaseModel):
+    day: date
+    count: int
+
+
+class DashboardSummaryOut(BaseModel):
+    total_problems: int
+    attempted_count: int
+    mastery_distribution: list[MasteryCountOut]
+    pattern_coverage: list[PatternCoverageOut]
+    attempts_by_day: list[AttemptsByDayOut]
+    reviews_due_count: int
+    reviews_overdue_count: int
+    readiness_pct: float | None = None

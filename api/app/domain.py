@@ -128,3 +128,40 @@ class BandwidthPlan:
     include_mock: bool
     headline: str
     spare_minutes_suggestion: str | None = field(default=None)
+
+
+@dataclass(frozen=True)
+class MasteryCount:
+    level: str  # L0-L6
+    count: int
+
+
+@dataclass(frozen=True)
+class PatternCoverage:
+    pattern: str
+    scheduled_count: int
+    l5_plus_count: int
+    ratio: float  # l5_plus_count / scheduled_count, 0.0 if scheduled_count == 0
+
+
+@dataclass(frozen=True)
+class AttemptsByDay:
+    day: date
+    count: int
+
+
+@dataclass(frozen=True)
+class DashboardSummary:
+    """Real aggregates only — every field is computed from actual rows,
+    never a placeholder. A brand-new account gets all-zero values, not a
+    different shape (build prompt: never fabricate; the UI decides how to
+    present zero, this layer never pretends otherwise)."""
+
+    total_problems: int
+    attempted_count: int
+    mastery_distribution: list[MasteryCount]
+    pattern_coverage: list[PatternCoverage]
+    attempts_by_day: list[AttemptsByDay]
+    reviews_due_count: int
+    reviews_overdue_count: int
+    readiness_pct: float | None

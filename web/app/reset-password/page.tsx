@@ -41,7 +41,7 @@ export default function ResetPasswordPage() {
     }
 
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.assign("/today");
+    window.location.assign("/dashboard");
   };
 
   return (

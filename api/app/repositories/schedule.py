@@ -6,7 +6,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -75,6 +75,55 @@ async def get_blocks_for_date(
     if dirty:
         await session.commit()
     return blocks
+
+
+async def create_block(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    on_date: date,
+    start_spec: str,
+    end_spec: str,
+    activity: str,
+    tier: str,
+    category: str,
+    planned_minutes: int,
+    what_to_do: str | None,
+    notes: str | None,
+    prayer_times: PrayerTimesResult,
+) -> TimeBlock:
+    """Resolves the spec up front (raises InvalidTimeSpecError on a bad
+    one, same validation the read path already trusts) and assigns the
+    next sequence slot for that day — no manual seq juggling for the
+    caller."""
+    start_resolved = resolve_spec(start_spec, prayer_times, on_date)
+    end_resolved = resolve_spec(end_spec, prayer_times, on_date)
+
+    next_seq = await session.scalar(
+        select(func.coalesce(func.max(TimeBlock.seq), 0) + 1).where(
+            TimeBlock.user_id == user_id, TimeBlock.date == on_date
+        )
+    )
+
+    block = TimeBlock(
+        user_id=user_id,
+        date=on_date,
+        seq=next_seq,
+        start_spec=start_spec,
+        end_spec=end_spec,
+        start_resolved=start_resolved,
+        end_resolved=end_resolved,
+        activity=activity,
+        tier=tier,
+        category=category,
+        planned_minutes=planned_minutes,
+        status="NOT DONE",
+        what_to_do=what_to_do,
+        notes=notes,
+    )
+    session.add(block)
+    await session.commit()
+    await session.refresh(block)
+    return block
 
 
 async def update_block_status(
