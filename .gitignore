@@ -19,8 +19,8 @@ web/node_modules/
 web/.next/
 web/out/
 
-# Data
-api/seed_data/*.xlsx
+# Data — personal source data never gets committed, wherever it lands
+*.xlsx
 *.db
 *.sqlite3
 

@@ -31,6 +31,20 @@ export interface TimeBlockOut {
   is_current: boolean;
 }
 
+export interface ProblemOut {
+  problem_id: number;
+  lc_number: number;
+  title: string;
+  slug: string;
+  url: string;
+  pattern: string;
+  difficulty: string;
+  is_neetcode150: boolean;
+  is_blind75: boolean;
+  current_mastery: MasteryLevel | null;
+  is_scheduled_today: boolean;
+}
+
 export interface RecommendationOut {
   problem_id: number;
   title: string;

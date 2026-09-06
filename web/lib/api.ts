@@ -3,6 +3,7 @@ import type {
   BlockStatus,
   DashboardSummaryOut,
   MasteryLevel,
+  ProblemOut,
   RecommendationOut,
   ReviewDueOut,
   TimeBlockOut,
@@ -105,4 +106,12 @@ export function getReviewsDue(): Promise<ReviewDueOut[]> {
 
 export function getDashboardSummary(): Promise<DashboardSummaryOut> {
   return request<DashboardSummaryOut>("/api/dashboard/summary", { cache: "no-store" });
+}
+
+export function getProblems(pattern?: string, difficulty?: string): Promise<ProblemOut[]> {
+  const params = new URLSearchParams();
+  if (pattern) params.set("pattern", pattern);
+  if (difficulty) params.set("difficulty", difficulty);
+  const qs = params.toString();
+  return request<ProblemOut[]>(`/api/problems${qs ? `?${qs}` : ""}`);
 }

@@ -4,7 +4,7 @@ from the recommender and repetition engines' plain fixtures."""
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +49,42 @@ async def get_attempt_fixtures(session: AsyncSession, user_id: uuid.UUID) -> lis
         )
         for a in result.scalars().all()
     ]
+
+
+async def list_problems(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    pattern: str | None = None,
+    difficulty: str | None = None,
+) -> list[tuple[Problem, date | None, str | None]]:
+    """Every problem, its curriculum slot for `today` (if any), and the
+    calling user's current mastery (if ever attempted) — the read model
+    behind the Problems browser. Not an engine: no ranking or ladder
+    logic, just a join and two optional filters."""
+    query = select(Problem, Curriculum.scheduled_date).outerjoin(
+        Curriculum, Curriculum.problem_id == Problem.id
+    )
+    if pattern:
+        query = query.where(Problem.pattern == pattern)
+    if difficulty:
+        query = query.where(Problem.difficulty == difficulty)
+    query = query.order_by(Problem.lc_number)
+
+    result = await session.execute(query)
+    rows = result.all()
+
+    problem_ids = [p.id for p, _ in rows]
+    mastery_by_problem: dict[int, str] = {}
+    if problem_ids:
+        latest_result = await session.execute(
+            select(ProblemAttempt)
+            .where(ProblemAttempt.user_id == user_id, ProblemAttempt.problem_id.in_(problem_ids))
+            .order_by(ProblemAttempt.attempted_at)
+        )
+        for a in latest_result.scalars().all():
+            mastery_by_problem[a.problem_id] = a.mastery_level
+
+    return [(p, scheduled_date, mastery_by_problem.get(p.id)) for p, scheduled_date in rows]
 
 
 async def get_latest_attempt_for_problem(

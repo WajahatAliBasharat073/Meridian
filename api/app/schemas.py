@@ -47,6 +47,20 @@ class BlockCreate(BaseModel):
     notes: str | None = None
 
 
+class ProblemOut(BaseModel):
+    problem_id: int
+    lc_number: int
+    title: str
+    slug: str
+    url: str
+    pattern: str
+    difficulty: str
+    is_neetcode150: bool
+    is_blind75: bool
+    current_mastery: MasteryLevel | None = None
+    is_scheduled_today: bool = False
+
+
 class RecommendationOut(BaseModel):
     problem_id: int
     title: str
