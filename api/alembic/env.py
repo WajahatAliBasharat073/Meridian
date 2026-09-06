@@ -41,10 +41,18 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_migrations_online() -> None:
+    url = config.get_main_option("sqlalchemy.url") or ""
+    connect_args: dict[str, object] = {}
+    if "+asyncpg" in url:
+        # Same pgbouncer-transaction-mode fix as app/db.py — this engine
+        # is built separately by Alembic, not through make_engine().
+        connect_args["statement_cache_size"] = 0
+
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
 
     async with connectable.connect() as connection:
