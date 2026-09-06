@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0b0e13;
+  --surface: #12161d;
+  --surface-2: #1a1f28;
+  --surface-hover: #202632;
+  --border: #262c37;
+  --border-strong: #333b48;
+
+  --text: #e9edf2;
+  --text-muted: #9aa4b2;
+  --text-faint: #626b78;
+
+  --accent: #6f9bc9;
+  --accent-soft: #1b2733;
+  --accent-strong: #a9c7e6;
+
+  --prayer: #e0a84d;
+  --prayer-soft: #2c2413;
+
+  --status-done: #4fae72;
+  --status-done-soft: #16281e;
+  --status-partial: #dba23f;
+  --status-partial-soft: #2a2113;
+  --status-rescheduled: #8b9ad1;
+  --status-rescheduled-soft: #1e2136;
+
+  --mastery-l0: #e2645f;
+  --mastery-l1: #e2814f;
+  --mastery-l2: #dba23f;
+  --mastery-l3: #c9b23f;
+  --mastery-l4: #a4b93f;
+  --mastery-l5: #7ab55a;
+  --mastery-l6: #4fae72;
+
+  --danger: #e2645f;
+
+  --radius: 10px;
+  --font-sans: var(--font-manrope), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-hover: var(--surface-hover);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-strong: var(--accent-strong);
+  --color-prayer: var(--prayer);
+  --color-prayer-soft: var(--prayer-soft);
+  --color-status-done: var(--status-done);
+  --color-status-partial: var(--status-partial);
+  --color-status-rescheduled: var(--status-rescheduled);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
