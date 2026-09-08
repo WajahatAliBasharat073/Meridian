@@ -36,6 +36,10 @@ async def create_attempt(
         payload.hint_used,
         payload.key_insight,
         today,
+        payload.solve_method,
+        payload.understood_approach_independently,
+        payload.reached_optimal,
+        payload.notes,
     )
     due_date = datetime.strptime(due_date_str, "%Y-%m-%d").date()
     if interval_days:

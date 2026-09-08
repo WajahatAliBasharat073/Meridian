@@ -6,6 +6,7 @@ from typing import Annotated
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
@@ -14,6 +15,7 @@ from app.deps import get_current_user_id
 from app.domain import Recommendation
 from app.engines.bandwidth import plan_bandwidth
 from app.models.core import TimeBlock
+from app.models.sessions import FocusSession
 from app.repositories import problems as problems_repo
 from app.repositories import reviews as reviews_repo
 from app.repositories import schedule as schedule_repo
@@ -35,6 +37,24 @@ async def get_today(
     blocks = await schedule_repo.get_blocks_for_date(session, user_id, today, prayer_times)
     current = await get_current_block(session, blocks, settings)
 
+    # One query for the whole day rather than one per block — the
+    # block-lock rule (app/engines/block_lock.py) needs to know which
+    # blocks have ever had a focus session started on them.
+    engaged_block_ids: set[int] = set()
+    if blocks:
+        engaged_block_ids = set(
+            (
+                await session.execute(
+                    select(FocusSession.block_id).where(
+                        FocusSession.user_id == user_id,
+                        FocusSession.block_id.in_([b.id for b in blocks]),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
     recs = await get_recommendations(session, user_id, today, max_results=1)
     next_action = recs[0] if recs else None
 
@@ -54,8 +74,8 @@ async def get_today(
 
     return TodayOut(
         date=today,
-        blocks=[_block_to_out(b, current) for b in blocks],
-        current_block=_block_to_out(current, current) if current else None,
+        blocks=[_block_to_out(b, current, engaged_block_ids) for b in blocks],
+        current_block=_block_to_out(current, current, engaged_block_ids) if current else None,
         next_action=_rec_to_out(next_action) if next_action else None,
         bandwidth=BandwidthOut(**bandwidth_plan.__dict__),
         counters=TodayCounters(
@@ -66,7 +86,9 @@ async def get_today(
     )
 
 
-def _block_to_out(block: TimeBlock, current: TimeBlock | None) -> TimeBlockOut:
+def _block_to_out(
+    block: TimeBlock, current: TimeBlock | None, engaged_block_ids: set[int]
+) -> TimeBlockOut:
     return TimeBlockOut(
         id=block.id,
         seq=block.seq,
@@ -81,6 +103,7 @@ def _block_to_out(block: TimeBlock, current: TimeBlock | None) -> TimeBlockOut:
         what_to_do=block.what_to_do,
         notes=block.notes,
         is_current=current is not None and block.id == current.id,
+        has_focus_session=block.id in engaged_block_ids,
     )
 
 

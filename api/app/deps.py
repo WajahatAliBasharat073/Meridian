@@ -63,10 +63,19 @@ async def _get_jwks(supabase_url: str, *, force_refresh: bool = False) -> list[d
     ):
         return list(_jwks_cache["keys"])
 
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        resp = await client.get(f"{supabase_url}/auth/v1/.well-known/jwks.json")
-        resp.raise_for_status()
-        keys = resp.json().get("keys", [])
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            resp = await client.get(f"{supabase_url}/auth/v1/.well-known/jwks.json")
+            resp.raise_for_status()
+            keys = resp.json().get("keys", [])
+    except Exception as err:
+        # Degrade gracefully if Supabase JWKS is unreachable or times out
+        if _jwks_cache["keys"]:
+            return list(_jwks_cache["keys"])
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Auth provider temporarily unreachable — check your network connection",
+        ) from err
 
     _jwks_cache["keys"] = keys
     _jwks_cache["fetched_at"] = now

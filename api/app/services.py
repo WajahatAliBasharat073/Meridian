@@ -14,6 +14,7 @@ from app.config import Settings
 from app.domain import (
     BandwidthInput,
     DailyRecap,
+    DailyTheoryPick,
     DashboardSummary,
     Recommendation,
     TimeBlockFixture,
@@ -21,14 +22,18 @@ from app.domain import (
 )
 from app.engines.bandwidth import MINUTES_PER_REVIEW
 from app.engines.daily_recap import compute_daily_recap
+from app.engines.daily_theory import pick_daily_theory
 from app.engines.recommender import recommend
 from app.engines.repetition import on_attempt
 from app.engines.summary import compute_dashboard_summary
+from app.engines.theory_pace import TheoryPaceReport, compute_theory_pace
 from app.engines.weekly_review import compute_weekly_review
 from app.models.core import TimeBlock
+from app.models.questions import Question
 from app.repositories import concepts as concepts_repo
 from app.repositories import goals as goals_repo
 from app.repositories import problems as problems_repo
+from app.repositories import questions as questions_repo
 from app.repositories import reviews as reviews_repo
 from app.repositories import schedule as schedule_repo
 
@@ -96,6 +101,10 @@ async def submit_attempt(
     hint_used: bool,
     key_insight: str | None,
     today: date,
+    solve_method: str | None = None,
+    understood_approach_independently: bool | None = None,
+    reached_optimal: bool | None = None,
+    notes: str | None = None,
 ) -> tuple[str, int]:
     """Writes the attempt, then advances (or creates) its review row.
     Returns (due_date, interval_days) for the one-line confirmation the UI
@@ -107,7 +116,17 @@ async def submit_attempt(
     previous_attempt = await problems_repo.get_latest_attempt_for_problem(session, user_id, problem_id)
 
     await problems_repo.record_attempt(
-        session, user_id, problem_id, mastery_level, minutes, hint_used, key_insight
+        session,
+        user_id,
+        problem_id,
+        mastery_level,
+        minutes,
+        hint_used,
+        key_insight,
+        solve_method,
+        understood_approach_independently,
+        reached_optimal,
+        notes,
     )
 
     existing_review = await reviews_repo.get_review_state(session, user_id, "problem", problem_id)
@@ -239,4 +258,56 @@ async def get_weekly_review(
 
     return compute_weekly_review(
         block_fixtures, block_dates, mood_counts, window_start, window_end, days
+    )
+
+
+async def get_daily_theory_questions(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    today: date,
+    count: int = 3,
+    case_study_count: int = 1,
+) -> list[tuple[Question, int, DailyTheoryPick]]:
+    """The day's theory picks (1 case study + 2 others by default),
+    hydrated back into full `Question` rows for the API to render — the
+    engine itself only ever sees the lightweight fixtures it needs to
+    rank with (build prompt: engines never see a Session or a full ORM
+    row)."""
+    fixtures = await questions_repo.get_all_question_fixtures(session)
+    progress = await questions_repo.get_question_progress_fixtures(session, user_id)
+    picks = pick_daily_theory(fixtures, progress, today, count=count, case_study_count=case_study_count)
+    if not picks:
+        return []
+
+    questions_by_id = await questions_repo.get_questions_by_ids(
+        session, [p.question_id for p in picks]
+    )
+    progress_by_id = {p.question_id: p for p in progress}
+
+    out: list[tuple[Question, int, DailyTheoryPick]] = []
+    for pick in picks:
+        q = questions_by_id.get(pick.question_id)
+        if q is None:
+            continue
+        mastery = progress_by_id[pick.question_id].mastery if pick.question_id in progress_by_id else 0
+        out.append((q, mastery, pick))
+    return out
+
+
+async def get_theory_pace(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    daily_counts: list[int] | None = None,
+    baseline_daily_count: int = 3,
+) -> TheoryPaceReport:
+    """How long clearing the theory backlog takes at your actual recorded
+    pace, and what changing the daily count buys — composes real timing
+    data with the pure `compute_theory_pace` engine."""
+    timings = await questions_repo.get_question_timing_fixtures(session, user_id)
+    backlog = await questions_repo.get_backlog_count(session, user_id)
+    return compute_theory_pace(
+        timings,
+        backlog_count=backlog,
+        daily_counts=daily_counts or [2, 3, 4, 5, 6],
+        baseline_daily_count=baseline_daily_count,
     )

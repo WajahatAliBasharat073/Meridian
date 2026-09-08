@@ -8,7 +8,8 @@ from app.models.life import (
     NutritionLog,
     OperatingRule,
     Pattern,
-    ReadingLog,
+    ReadingBook,
+    ReadingSession,
     RecoveryLog,
     Setting,
     ThesisLog,
@@ -16,9 +17,17 @@ from app.models.life import (
     VocabWord,
 )
 from app.models.observations import Observation
-from app.models.problems import Curriculum, Problem, ProblemAttempt
-from app.models.questions import Question, QuestionCoverage
+from app.models.problems import (
+    Curriculum,
+    Problem,
+    ProblemAttempt,
+    TopicGuide,
+    TopicLearningEntry,
+    TopicVerificationAttempt,
+)
+from app.models.questions import InterviewModule, Question, QuestionProgress
 from app.models.repetition import Mistake, Mock, Review
+from app.models.sessions import FocusSession, FocusSessionEvent
 
 __all__ = [
     "Base",
@@ -28,6 +37,9 @@ __all__ = [
     "Problem",
     "Curriculum",
     "ProblemAttempt",
+    "TopicGuide",
+    "TopicLearningEntry",
+    "TopicVerificationAttempt",
     "Review",
     "Mistake",
     "Mock",
@@ -37,7 +49,8 @@ __all__ = [
     "NutritionLog",
     "Meal",
     "MealPlan",
-    "ReadingLog",
+    "ReadingBook",
+    "ReadingSession",
     "TimeLeak",
     "Pattern",
     "OperatingRule",
@@ -46,8 +59,11 @@ __all__ = [
     "Concept",
     "ConceptAttempt",
     "Question",
-    "QuestionCoverage",
+    "InterviewModule",
+    "QuestionProgress",
     "Goal",
     "TimeBudget",
     "DailyReflection",
+    "FocusSession",
+    "FocusSessionEvent",
 ]

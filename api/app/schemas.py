@@ -3,13 +3,32 @@ Validated at every boundary (build prompt 10 / design doc 11)."""
 
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date, datetime, time
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# `date` as a *type* alias. A schema field named `date` with a default
+# (`date: date | None = None`) binds the name `date` to None inside its own
+# class body, so the annotation can no longer resolve — this alias is what
+# such fields annotate against.
+DateOnly = date
+
 MasteryLevel = Literal["L0", "L1", "L2", "L3", "L4", "L5", "L6"]
 BlockStatus = Literal["DONE", "NOT DONE", "PARTIAL", "RESCHEDULED"]
+
+# How much help an attempt actually took — a separate axis from
+# MasteryLevel, which records confidence afterwards. Defined up here
+# because ProblemOut (below) annotates with it.
+SolveMethod = Literal[
+    "independent",        # solved it alone, start to finish
+    "recalled_pattern",   # recognised the pattern from earlier practice
+    "after_hint",         # needed a nudge, then solved it
+    "after_editorial",    # read the written solution
+    "after_video",        # watched a video explanation
+    "brute_force_only",   # working solution, but not the optimal one
+    "not_solved",         # attempted, didn't get there
+]
 
 
 class TimeBlockOut(BaseModel):
@@ -26,6 +45,11 @@ class TimeBlockOut(BaseModel):
     what_to_do: str | None = None
     notes: str | None = None
     is_current: bool = False
+    # Whether a focus session has ever been started on this block, in any
+    # state — the signal the block-lock rule needs (see
+    # app/engines/block_lock.py). Not derived from `status`: a block can
+    # be NOT DONE and still have an abandoned session on it.
+    has_focus_session: bool = False
 
 
 class BlockStatusUpdate(BaseModel):
@@ -49,16 +73,82 @@ class BlockCreate(BaseModel):
 
 class ProblemOut(BaseModel):
     problem_id: int
-    lc_number: int
+    # None for a classic algorithm with no LeetCode entry (Dijkstra, KMP,
+    # Rat in a Maze) — never a stand-in number.
+    lc_number: int | None = None
     title: str
     slug: str
-    url: str
+    url: str | None = None
     pattern: str
+    topic: str | None = None
     difficulty: str
+    source: str = "leetcode"
     is_neetcode150: bool
     is_blind75: bool
+    # Named companies from the source sheet, plus its own "+N" truncation
+    # as a count rather than invented names.
+    companies: list[str] = Field(default_factory=list)
+    company_extra_count: int = 0
     current_mastery: MasteryLevel | None = None
     is_scheduled_today: bool = False
+    # Progress detail, so the browser can distinguish "solved unaided" from
+    # "solved after watching the video" without a second request.
+    last_solve_method: SolveMethod | None = None
+    attempt_count: int = 0
+    last_attempted_at: datetime | None = None
+    last_minutes: int | None = None
+    last_key_insight: str | None = None
+    last_notes: str | None = None
+
+
+class TopicGuideTypeOut(BaseModel):
+    name: str
+    note: str
+
+
+class TopicGuideOperationOut(BaseModel):
+    op: str
+    complexity: str
+    note: str
+
+
+class TopicGuideOut(BaseModel):
+    """The "learn the structure first" material for one topic."""
+
+    topic: str
+    display_name: str
+    seq: int
+    one_liner: str
+    learn_first: str
+    types: list[TopicGuideTypeOut] = Field(default_factory=list)
+    operations: list[TopicGuideOperationOut] = Field(default_factory=list)
+    must_know: list[str] = Field(default_factory=list)
+    pitfalls: list[str] = Field(default_factory=list)
+    needs_revision: bool = False
+
+
+class TopicSectionOut(BaseModel):
+    """One topic: what to learn first, then its problems and the counts.
+
+    Ordered by topic, never by the source sheet's day numbering — the plan
+    is "understand arrays, then do the array problems", not "day 3".
+    """
+
+    topic: str
+    display_name: str
+    seq: int
+    guide: TopicGuideOut | None = None
+    problems: list[ProblemOut] = Field(default_factory=list)
+    total: int = 0
+    solved: int = 0
+    unaided: int = 0
+    remaining: int = 0
+    by_difficulty: dict[str, int] = Field(default_factory=dict)
+    # Every company named across this topic's problems, most-tagged first.
+    companies: list[str] = Field(default_factory=list)
+    # Whether the structure has been demonstrated. `problems` is empty while
+    # this is locked or expired — see app/engines/topic_gate.py.
+    gate: TopicGateOut | None = None
 
 
 class ConceptResourceOut(BaseModel):
@@ -82,21 +172,90 @@ class ConceptAttemptCreate(BaseModel):
     notes: str | None = None
 
 
+# The 0-7 interview mastery ladder. Seeing a question is not knowing it,
+# which is why this is not a boolean.
+MASTERY_LADDER: dict[int, str] = {
+    0: "Never seen",
+    1: "Recognize",
+    2: "Can explain",
+    3: "Can solve",
+    4: "Can reason about trade-offs",
+    5: "Can answer follow-ups",
+    6: "Can design a production system",
+    7: "Can teach it",
+}
+
+
+class InterviewModuleOut(BaseModel):
+    code: str
+    title: str
+    summary: str | None
+    priority: str
+    submodules: list[str]
+    target_seniority: list[str]
+    question_count: int
+    ready_count: int
+    pct: float
+
+
 class QuestionOut(BaseModel):
     question_id: int
     category: str
     title: str
     source: str
-    covered: bool
+    mastery: int
+
+    module_code: str | None = None
+    submodule: str | None = None
+    question_type: str | None = None
+    difficulty: str | None = None
+    seniority: str | None = None
+    priority: str | None = None
+    frequency: str | None = None
+    # See `Question.evidence` — a non-empty `companies` list is only legal
+    # alongside evidence='reported' and a source_url.
+    evidence: str | None = None
+    source_url: str | None = None
+    tests_for: str | None = None
+    strong_signal: str | None = None
+    weak_signal: str | None = None
+    companies: list[str] = []
+    answer_dimensions: list[str] = []
+    follow_ups: list[str] = []
+    common_mistakes: list[str] = []
+    # A real reference implementation, for coding questions backed by an
+    # actual source file (Module B). None for every other question type.
+    reference_solution: str | None = None
 
 
-class QuestionCoverageOut(BaseModel):
-    covered: bool
+class DailyTheoryPickOut(QuestionOut):
+    """One of today's recommended theory questions — the full QuestionOut
+    record plus why it was picked today specifically."""
+
+    is_case_study: bool
+    pick_reason: str
+
+
+class QuestionMasteryIn(BaseModel):
+    mastery: int = Field(ge=0, le=7)
+    notes: str | None = None
+    # Optional, and cumulative server-side (see QuestionProgress.total_minutes)
+    # — an untimed rating simply contributes nothing to the pace average
+    # rather than being recorded as a zero-minute study session.
+    minutes: int | None = Field(default=None, ge=0)
+
+
+class QuestionMasteryOut(BaseModel):
+    mastery: int
+    label: str
 
 
 class CategoryCoverageOut(BaseModel):
     category: str
+    # "covered" is kept as the field name for compatibility; it means
+    # ready (mastery >= 4). `started_count` is anything rated at all.
     covered_count: int
+    started_count: int = 0
     total_count: int
     pct: float
 
@@ -104,8 +263,27 @@ class CategoryCoverageOut(BaseModel):
 class QuestionSummaryOut(BaseModel):
     by_category: list[CategoryCoverageOut]
     covered_count: int
+    started_count: int = 0
     total_count: int
     pct: float | None
+
+
+class TheoryPaceProjectionOut(BaseModel):
+    daily_count: int
+    daily_minutes: int
+    days_to_clear_backlog: int | None
+    minutes_delta_vs_baseline: int
+    days_saved_vs_baseline: int | None
+
+
+class TheoryPaceOut(BaseModel):
+    enough_data: bool
+    questions_with_data: int
+    min_questions_needed: int
+    avg_minutes_per_question: float | None
+    backlog_count: int
+    baseline_daily_count: int
+    projections: list[TheoryPaceProjectionOut]
 
 
 class RecommendationOut(BaseModel):
@@ -125,6 +303,13 @@ class AttemptCreate(BaseModel):
     minutes: int | None = None
     hint_used: bool = False
     key_insight: str | None = None
+    # How much help the attempt actually took — a separate axis from
+    # mastery_level, which records confidence afterwards.
+    solve_method: SolveMethod | None = None
+    understood_approach_independently: bool | None = None
+    reached_optimal: bool | None = None
+    # Long-form workings, kept separate from the short key_insight prompt.
+    notes: str | None = None
 
 
 class AttemptResult(BaseModel):
@@ -349,25 +534,340 @@ class ThesisLogCreate(BaseModel):
     date: date
 
 
-class ReadingLogOut(BaseModel):
+ReadingFormat = Literal["book", "paper", "article", "docs"]
+ReadingStatus = Literal["to_read", "reading", "completed", "paused", "dropped"]
+
+# Genre, not format — kept separate so a self-help title and a technical
+# book can both be tracked without one field trying to mean two things.
+# "self_help" is deliberately named to cover exactly the titles that
+# prompted adding this list: The 5 AM Club, The 7 Habits of Highly
+# Effective People, Atomic Habits, and the rest of that shelf.
+ReadingCategory = Literal[
+    "fiction",
+    "non_fiction",
+    "self_help",
+    "business",
+    "technical",
+    "biography_memoir",
+    "philosophy",
+    "science",
+    "history",
+    "other",
+]
+
+READING_CATEGORY_LABELS: dict[str, str] = {
+    "fiction": "Fiction",
+    "non_fiction": "Non-Fiction",
+    "self_help": "Self-Help / Personal Development",
+    "business": "Business & Career",
+    "technical": "Technical",
+    "biography_memoir": "Biography & Memoir",
+    "philosophy": "Philosophy",
+    "science": "Science",
+    "history": "History",
+    "other": "Other",
+}
+
+
+class ReadingSessionOut(BaseModel):
     id: int
+    book_id: int
     date: date
+    page_reached: int | None = None
+    minutes: int | None = None
+    note: str | None = None
+
+
+class ReadingSessionCreate(BaseModel):
+    date: date
+    page_reached: int | None = Field(default=None, ge=0)
+    minutes: int | None = Field(default=None, gt=0)
+    note: str | None = None
+
+
+class ReadingBookOut(BaseModel):
+    id: int
     title: str
     author: str | None = None
-    kind: str
-    progress_note: str | None = None
-    status: str | None = None
+    cover_url: str | None = None
+    total_pages: int | None = None
+    format: ReadingFormat
+    category: ReadingCategory | None = None
+    status: ReadingStatus
+    rating: int | None = None
+    started_date: date | None = None
+    finished_date: date | None = None
+    notes: str | None = None
+
+    # Computed from `reading_sessions`, never stored — see ReadingBook's
+    # docstring. None until at least one session has logged a page.
+    current_page: int | None = None
+    progress_pct: float | None = None
+    session_count: int = 0
+    total_minutes_logged: int = 0
+    last_session_date: date | None = None
+    last_session_note: str | None = None
 
 
-class ReadingLogCreate(BaseModel):
-    date: date
+class ReadingBookCreate(BaseModel):
     title: str = Field(min_length=1)
     author: str | None = None
-    kind: str = "book"
-    progress_note: str | None = None
-    status: str | None = "in_progress"
+    cover_url: str | None = None
+    total_pages: int | None = Field(default=None, gt=0)
+    format: ReadingFormat = "book"
+    category: ReadingCategory | None = None
+    status: ReadingStatus = "reading"
+    started_date: date | None = None
 
 
-class ReadingLogUpdate(BaseModel):
-    status: str | None = None
-    progress_note: str | None = None
+class ReadingBookUpdate(BaseModel):
+    title: str | None = None
+    author: str | None = None
+    cover_url: str | None = None
+    total_pages: int | None = Field(default=None, gt=0)
+    format: ReadingFormat | None = None
+    category: ReadingCategory | None = None
+    status: ReadingStatus | None = None
+    rating: int | None = Field(default=None, ge=1, le=5)
+    started_date: date | None = None
+    finished_date: date | None = None
+    notes: str | None = None
+
+
+class FocusSessionOut(BaseModel):
+    id: int
+    block_id: int
+    scheduled_start: time | None = None
+    planned_minutes: int
+    started_at: datetime
+    ended_at: datetime | None = None
+    elapsed_seconds: int
+    start_delay_minutes: int | None = None
+    state: Literal["in_progress", "paused", "completed", "abandoned"]
+    focus_rating: int | None = None
+
+
+class FocusSessionStart(BaseModel):
+    block_id: int
+
+
+class FocusSessionUpdate(BaseModel):
+    state: Literal["in_progress", "paused", "completed", "abandoned"] | None = None
+    elapsed_seconds: int | None = Field(default=None, ge=0)
+    focus_rating: int | None = Field(default=None, ge=1, le=5)
+    notes: str | None = None
+
+
+class CategoryPunctualityOut(BaseModel):
+    category: str
+    sessions: int
+    avg_delay_minutes: float
+    on_time_pct: float
+
+
+class PunctualityOut(BaseModel):
+    enough_data: bool
+    session_count: int
+    min_sessions_needed: int
+    on_time_pct: float | None
+    avg_delay_minutes: float | None
+    median_delay_minutes: float | None
+    started_early_or_on_time: int
+    started_late: int
+    worst_category: CategoryPunctualityOut | None
+    best_category: CategoryPunctualityOut | None
+    by_category: list[CategoryPunctualityOut]
+    observations: list[str]
+
+
+class FocusSessionEventOut(BaseModel):
+    id: int
+    session_id: int
+    event_type: Literal[
+        "started", "paused", "resumed", "extended", "shortened", "completed", "abandoned"
+    ]
+    occurred_at: datetime
+    elapsed_seconds_at_event: int
+    note: str | None = None
+
+
+class ActivityBreakdownOut(BaseModel):
+    activity: str
+    category: str
+    sessions: int
+    worked_minutes: int
+    paused_minutes: int
+    pause_count: int
+    avg_pauses_per_session: float
+    paused_pct_of_session: float | None
+
+
+class SessionBreakdownOut(BaseModel):
+    window_days: int
+    total_sessions: int
+    total_worked_minutes: int
+    total_paused_minutes: int
+    total_pause_count: int
+    by_activity: list[ActivityBreakdownOut]
+    observations: list[str]
+
+class TopicGateOut(BaseModel):
+    """Whether this topic's problems are open, and on what evidence."""
+
+    topic: str
+    state: str  # locked | unlocked | expired | unverified_override
+    problems_visible: bool
+    passed_at: datetime | None = None
+    expires_at: datetime | None = None
+    days_until_expiry: int | None = None
+    attempt_count: int = 0
+    overridden: bool = False
+
+
+LearningEntryKind = Literal["source", "note", "snippet", "requirement"]
+
+
+class LearningEntryOut(BaseModel):
+    """One thing logged while learning a topic.
+
+    For a `source`, `url` is a bookmark only — nothing fetches or reads it —
+    so `body` (the summary or transcript pasted in) is the only content that
+    reaches the question generator. Pasting the transcript is therefore what
+    makes the questions specific; a bare link barely moves them.
+    """
+
+    id: int
+    topic: str
+    kind: LearningEntryKind
+    title: str
+    url: str | None = None
+    body: str | None = None
+    created_at: datetime
+
+
+class LearningEntryCreate(BaseModel):
+    kind: LearningEntryKind
+    title: str = Field(min_length=1)
+    url: str | None = None
+    body: str | None = None
+
+
+class VerificationChecklistItemOut(BaseModel):
+    text: str
+    # Curated items can never be removed; self-added ones are additive only,
+    # or the gate would be set by the person it is gating.
+    self_added: bool = False
+    entry_id: int | None = None
+
+
+class VerificationChecklistOut(BaseModel):
+    """What this topic requires you to have implemented: its curated gate
+    list, plus anything you have added to it yourself."""
+
+    topic: str
+    display_name: str
+    required: list[str] = Field(default_factory=list)
+    items: list[VerificationChecklistItemOut] = Field(default_factory=list)
+
+
+class BuildSubmissionIn(BaseModel):
+    code: str = Field(min_length=1)
+    notes: str = ""
+
+
+class BuildResultOut(BaseModel):
+    attempt_id: int
+    covered: list[str] = Field(default_factory=list)
+    missing: list[str] = Field(default_factory=list)
+    concerns: list[str] = Field(default_factory=list)
+    notes: str = ""
+    build_score: float
+    build_passed: bool
+    # Only present once the build stage clears — no questions to defend
+    # against a submission that never covered the structure.
+    questions: list[str] = Field(default_factory=list)
+
+
+class DefendSubmissionIn(BaseModel):
+    answers: list[str] = Field(default_factory=list)
+    # Flight recorder, reported by the client. A browser cannot prevent tab
+    # switching, so this records what happened instead of claiming it could
+    # not happen.
+    focus_losses: int = Field(default=0, ge=0)
+    focus_lost_seconds: int = Field(default=0, ge=0)
+    duration_seconds: int | None = Field(default=None, ge=0)
+
+
+class DefendGradeOut(BaseModel):
+    question: str
+    answer: str
+    verdict: str  # correct | partial | wrong
+    feedback: str = ""
+
+
+class DefendResultOut(BaseModel):
+    attempt_id: int
+    grades: list[DefendGradeOut] = Field(default_factory=list)
+    defend_score: float
+    passed: bool
+    gate: TopicGateOut
+    focus_losses: int = 0
+    focus_lost_seconds: int = 0
+
+
+class OverrideIn(BaseModel):
+    reason: str = ""
+
+
+class VitalsOut(BaseModel):
+    """One day's vitals as logged, plus the derived score.
+
+    `recovery_score` is null when too little was logged to compute one — the
+    Health page previously showed a number derived from hardcoded defaults,
+    which is worse than showing nothing. `missing` names what to fill in.
+    """
+
+    date: date
+    sleep_hours: float | None = None
+    sleep_quality: int | None = None
+    energy: int | None = None
+    mood: int | None = None
+    stress: int | None = None
+    exercise_minutes: int | None = None
+    water_ml: int | None = None
+    calories: int | None = None
+    protein_g: float | None = None
+
+    recovery_score: float | None = None
+    score_components: dict[str, float] = Field(default_factory=dict)
+    missing: list[str] = Field(default_factory=list)
+    water_target_ml: int
+    hydration_pct: float | None = None
+    # False means literally nothing has been logged today, which the page
+    # renders as an empty state rather than as zeroes.
+    has_any_entry: bool = False
+
+
+class RecoveryUpdateIn(BaseModel):
+    """Patch semantics: only the fields sent are written, so entering sleep
+    in the morning does not blank last night's stress rating."""
+
+    date: DateOnly | None = None
+    sleep_hours: float | None = Field(default=None, ge=0, le=24)
+    sleep_quality: int | None = Field(default=None, ge=1, le=5)
+    energy: int | None = Field(default=None, ge=1, le=5)
+    mood: int | None = Field(default=None, ge=1, le=5)
+    stress: int | None = Field(default=None, ge=1, le=5)
+    exercise_minutes: int | None = Field(default=None, ge=0)
+
+
+class NutritionUpdateIn(BaseModel):
+    date: DateOnly | None = None
+    water_ml: int | None = Field(default=None, ge=0)
+    calories: int | None = Field(default=None, ge=0)
+    protein_g: float | None = Field(default=None, ge=0)
+
+
+class WaterAddIn(BaseModel):
+    # One glass. Bounded so a stuck client cannot log a bathtub.
+    ml: int = Field(default=250, gt=0, le=2000)

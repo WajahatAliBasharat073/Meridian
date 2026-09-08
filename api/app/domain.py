@@ -98,6 +98,24 @@ class AttemptFixture:
 
 
 @dataclass(frozen=True)
+class ProblemProgress:
+    """What the Problems browser needs to know about one problem's history.
+
+    `mastery_level` alone can't answer "which of these did I actually get
+    unaided?" — that's what `solve_method` and `attempt_count` are for, and
+    why they travel together rather than being folded into a single score.
+    """
+
+    mastery_level: str
+    attempt_count: int
+    last_attempted_at: datetime
+    solve_method: str | None = None
+    key_insight: str | None = None
+    notes: str | None = None
+    minutes: int | None = None
+
+
+@dataclass(frozen=True)
 class Recommendation:
     problem_id: int
     title: str
@@ -238,3 +256,33 @@ class WeeklyReview:
     mood_distribution: list[MoodCount]
     what_went_well: list[str]
     what_to_improve: list[str]
+
+
+@dataclass(frozen=True)
+class QuestionFixture:
+    """A row from `questions`, reduced to what the daily theory recommender
+    needs — deliberately not the full record (follow-ups, signals, etc.),
+    which is hydrated back in at the service layer for the API response."""
+
+    question_id: int
+    module_code: str | None
+    category: str
+    question_type: str | None
+    priority: str | None  # 'P0' | 'P1' | 'P2' | 'P3' | None
+    frequency: str | None  # 'very_high' | 'high' | 'medium' | 'low' | 'unknown' | None
+
+
+@dataclass(frozen=True)
+class QuestionProgressFixture:
+    """This user's ladder position on one question, as of `today`."""
+
+    question_id: int
+    mastery: int  # 0-7
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class DailyTheoryPick:
+    question_id: int
+    is_case_study: bool
+    reason: str

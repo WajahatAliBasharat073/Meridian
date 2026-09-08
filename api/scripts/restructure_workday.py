@@ -1,0 +1,572 @@
+"""Rebuild the managed parts of the daily schedule around sustainable focus.
+
+Three changes, applied from today forward:
+
+1. **Lunch and Zuhr move into the 13:00-14:00 window, lunch first.** Zuhr's
+   *earliest* valid time is solar noon (12:07 today, later in winter), but
+   its window runs until Asr, so praying it right after a 13:00 lunch
+   sits inside that window year-round in Karachi. The script still checks
+   per date and pushes Zuhr later (never earlier) if its own earliest
+   time would ever fall after lunch ends.
+
+2. **Focus blocks target 90 minutes and never exceed 105.** The old day
+   had a 3h42m unbroken afternoon job block and a 2h20m evening prep
+   block. A run that overshoots 90 by a little is left whole rather than
+   cut into a stub - a 12-minute "focus block" is not a focus block.
+
+3. **Breaks are screen-free and 15 minutes**, categorised as Recovery so
+   they show up as recovery rather than as slack for work to eat.
+
+Why 90/15 and not Pomodoro's 25/5: 25-minute cycles suit shallow,
+interruptible work, and the context-switch cost is wrong for debugging or
+a literature review. Roughly 90 minutes tracks the ultradian
+rest-activity cycle, after which sustained attention falls off, and 15
+minutes is long enough for a break to restore rather than merely
+interrupt (the widely-cited 52/17 pattern lands in the same region). A
+5-minute break spent on a phone is not recovery, which is why these
+blocks say screen-free explicitly.
+
+The honest trade-off: this converts roughly 45 minutes of the 09:00-17:00
+window from screen time into recovery, so job time drops from about 6h50m
+to 6h05m. That is the point of the request, but it is a real reduction.
+
+Usage:
+    python -m scripts.restructure_workday               # dry run, today
+    python -m scripts.restructure_workday --all-dates   # dry run, today..Dec 31
+    python -m scripts.restructure_workday --all-dates --apply
+"""
+
+from __future__ import annotations
+
+import asyncio
+import sys
+import uuid
+from dataclasses import dataclass
+from datetime import date as date_
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import delete, select
+
+from app.config import get_settings
+from app.db import SessionLocal
+from app.models.core import PrayerTimes, TimeBlock, User
+
+# The block labels carry emoji to match the rest of the schedule, and a
+# Windows console defaults to cp1252, which cannot encode them. Without
+# this the script dies while *printing* its dry run - the data is fine.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+BREAK_MINUTES = 15
+# Target length for a focus block. A run that overshoots by less than
+# FOLD_TOLERANCE is left whole rather than cut into a stub, so the real
+# ceiling is TARGET + FOLD_TOLERANCE.
+MAX_FOCUS_MINUTES = 90
+FOLD_TOLERANCE = 15
+HARD_CAP_MINUTES = MAX_FOCUS_MINUTES + FOLD_TOLERANCE
+
+# Windows this script owns. Blocks inside one are replaced; everything else
+# on the day (Fajr, wake, breakfast, dinner, vocabulary, reading, night
+# shutdown) is left exactly as it is.
+MANAGED_WINDOWS: list[tuple[time, time]] = [
+    (time(4, 30), time(7, 30)),
+    (time(9, 0), time(17, 0)),
+    (time(17, 0), time(20, 40)),
+]
+
+SCREEN_FREE_NOTE = (
+    "Screen-free. Stand up, leave the desk, move, and look at something further than "
+    "6 metres away so your eyes refocus. No phone - a break spent scrolling is not recovery."
+)
+
+
+@dataclass
+class NewBlock:
+    start: time
+    end: time
+    activity: str
+    tier: str
+    category: str
+    what_to_do: str | None = None
+    notes: str | None = None
+    deep_work: bool = False
+
+    @property
+    def minutes(self) -> int:
+        return _minutes_between(self.start, self.end)
+
+
+def _shift(t: time, minutes: int) -> time:
+    return (datetime.combine(date_(2000, 1, 1), t) + timedelta(minutes=minutes)).time()
+
+
+def _minutes_between(a: time, b: time) -> int:
+    delta = datetime.combine(date_(2000, 1, 1), b) - datetime.combine(date_(2000, 1, 1), a)
+    return int(delta.total_seconds() // 60)
+
+
+def _break(start: time) -> NewBlock:
+    return NewBlock(
+        start=start,
+        end=_shift(start, BREAK_MINUTES),
+        activity="🌿 Screen-free break",
+        tier="T1",
+        category="Recovery",
+        what_to_do="Leave the desk. Walk, stretch, drink water, rest your eyes.",
+        notes=SCREEN_FREE_NOTE,
+    )
+
+
+def _split_focus(
+    start: time,
+    end: time,
+    activity: str,
+    tier: str,
+    category: str,
+    what_to_do: str | None = None,
+) -> list[NewBlock]:
+    """One focus run, cut into <=90-minute blocks separated by screen-free
+    breaks.
+
+    A leftover tail is folded into the final block rather than left as a
+    stub: a 12-minute "focus block" is not a focus block.
+    """
+    total = _minutes_between(start, end)
+    if total <= 0:
+        return []
+    if total <= HARD_CAP_MINUTES:
+        return [NewBlock(start, end, activity, tier, category, what_to_do, deep_work=True)]
+
+    out: list[NewBlock] = []
+    cursor = start
+    part = 1
+    while True:
+        remaining = _minutes_between(cursor, end)
+        if remaining <= HARD_CAP_MINUTES:
+            out.append(
+                NewBlock(
+                    cursor,
+                    end,
+                    f"{activity} — block {part}",
+                    tier,
+                    category,
+                    what_to_do,
+                    deep_work=True,
+                )
+            )
+            break
+        chunk_end = _shift(cursor, MAX_FOCUS_MINUTES)
+        out.append(
+            NewBlock(
+                cursor,
+                chunk_end,
+                f"{activity} — block {part}",
+                tier,
+                category,
+                what_to_do,
+                deep_work=True,
+            )
+        )
+        out.append(_break(chunk_end))
+        cursor = _shift(chunk_end, BREAK_MINUTES)
+        part += 1
+    return out
+
+
+def is_job_day(existing: list[TimeBlock]) -> bool:
+    """Whether this date is a working day, decided from its own shape.
+
+    Weekends in the source workbook are a different day entirely: no
+    remote job at all, thesis-heavy, with Maghrib and Isha scheduled and
+    family/free time in the evening. Imposing the weekday template on
+    them destroys that. Testing for a Job-category block is better than
+    assuming Mon-Fri, because it also leaves a weekday holiday alone.
+    """
+    return any(b.category == "Job" for b in existing)
+
+
+def _fajr_end(existing: list[TimeBlock], pt: PrayerTimes) -> time:
+    """When the day's Fajr block actually ends.
+
+    Deriving this from the computed prayer time instead produced a
+    one-minute overlap on every date: the workbook's Fajr times come from
+    its own prayer sheet and differ from our calculation by a minute.
+    """
+    for b in existing:
+        if b.category == "Prayer" and "Fajr" in b.activity and b.end_resolved:
+            return b.end_resolved
+    return _shift(pt.fajr, 20)
+
+
+def build_day(pt: PrayerTimes, existing: list[TimeBlock]) -> list[NewBlock]:
+    """The managed blocks for one date, given that date's prayer times and
+    the blocks already on it."""
+    blocks: list[NewBlock] = []
+
+    # Morning thesis deep work, starting when the Fajr block ends.
+    blocks += _split_focus(
+        _fajr_end(existing, pt),
+        time(7, 30),
+        "Thesis — deep research / literature review",
+        "T2",
+        "Thesis",
+        "Highest-energy window of the day - protect it.",
+    )
+
+    # Lunch sits at 13:00; Zuhr follows it, unless the prayer's own
+    # earliest valid time (solar noon) falls later than lunch would
+    # otherwise end - the schedule must not assert Zuhr on the prayer's
+    # behalf. Lunch first means that guard only ever pushes Zuhr later,
+    # never earlier, which is the safe direction for a prayer time.
+    lunch_start = time(13, 0)
+    lunch_end = _shift(lunch_start, 35)
+    zuhr_start = max(lunch_end, pt.zuhr)
+    zuhr_end = _shift(zuhr_start, 20)
+
+    blocks += _split_focus(
+        time(9, 0),
+        time(12, 15),
+        "💼 Remote job — focused work",
+        "T1",
+        "Job",
+        "Job responsibility wins if a meeting or urgent task appears.",
+    )
+    blocks.append(_break(time(12, 15)))
+    blocks.append(
+        NewBlock(
+            time(12, 30),
+            lunch_start,
+            "💼 Remote job — light tasks / email / admin",
+            "T1",
+            "Job",
+            "Deliberately shallow: the half hour before a break is the wrong place for deep work.",
+        )
+    )
+
+    blocks.append(
+        NewBlock(
+            lunch_start,
+            lunch_end,
+            "🍛 Lunch",
+            "T1",
+            "Nutrition",
+            "A real meal, away from the desk.",
+            notes="Screen-free. A real meal, not five minutes at the keyboard.",
+        )
+    )
+    blocks.append(
+        NewBlock(
+            zuhr_start,
+            zuhr_end,
+            "🕌 Zuhr + short recovery",
+            "T1",
+            "Prayer",
+            "Pray Zuhr.",
+            notes=(
+                f"Scheduled at {zuhr_start.strftime('%H:%M')} by choice, inside the Zuhr window "
+                f"(earliest today {pt.zuhr.strftime('%H:%M')}; the window closes at Asr, "
+                f"{pt.asr.strftime('%H:%M')}). Do not schedule deep cognitive work across "
+                f"this transition."
+            ),
+        )
+    )
+
+    if _minutes_between(zuhr_end, pt.asr) > 20:
+        blocks += _split_focus(
+            zuhr_end,
+            pt.asr,
+            "💼 Remote job — afternoon work / meetings",
+            "T1",
+            "Job",
+            "Primary work tasks.",
+        )
+
+    asr_end = _shift(pt.asr, 15)
+    blocks.append(
+        NewBlock(
+            pt.asr,
+            asr_end,
+            "🕌 Asr + movement/hydration reset",
+            "T1",
+            "Prayer",
+            "Pray Asr, then move.",
+            notes="Return to job duties afterward if the workday is still active.",
+        )
+    )
+
+    # The workday ends at 17:00, or at Asr+15 when Asr runs late (May-Aug).
+    job_end = max(time(17, 0), asr_end)
+    after_asr = _minutes_between(asr_end, job_end)
+    SHUTDOWN_MINUTES = 15
+    if after_asr > SHUTDOWN_MINUTES + 20:
+        # Winter Asr is early, leaving over an hour of real work after it.
+        # Calling that a "shutdown buffer" mislabels the day.
+        blocks += _split_focus(
+            asr_end,
+            _shift(job_end, -SHUTDOWN_MINUTES),
+            "💼 Remote job — afternoon work / meetings",
+            "T1",
+            "Job",
+            "Primary work tasks.",
+        )
+        blocks.append(
+            NewBlock(
+                _shift(job_end, -SHUTDOWN_MINUTES),
+                job_end,
+                "💼 Remote job — shutdown / admin",
+                "T1",
+                "Job",
+                "Wrap up, and write tomorrow's first task down before you close the laptop.",
+                notes="Ends at 17:00, or at Asr+15 if that is later.",
+            )
+        )
+    elif after_asr > 0:
+        blocks.append(
+            NewBlock(
+                asr_end,
+                job_end,
+                "💼 Remote job — shutdown / admin",
+                "T1",
+                "Job",
+                "Wrap up, and write tomorrow's first task down before you close the laptop.",
+                notes="Ends at 17:00, or at Asr+15 if that is later.",
+            )
+        )
+
+    # Evening interview prep: two 90-minute blocks with one break, then a
+    # short close-out that lands exactly on dinner. Laid out explicitly
+    # rather than via _split_focus, which left a 35-minute stub between two
+    # breaks only 35 minutes apart.
+    prep_start = _shift(job_end, 5)
+    coding_end = _shift(prep_start, MAX_FOCUS_MINUTES)
+    theory_start = _shift(coding_end, BREAK_MINUTES)
+    theory_end = _shift(theory_start, MAX_FOCUS_MINUTES)
+
+    blocks.append(
+        NewBlock(
+            prep_start,
+            coding_end,
+            "💻 Interview Prep — Coding",
+            "T2",
+            "InterviewPrep",
+            "Today's scheduled problem, then the review queue.",
+            deep_work=True,
+        )
+    )
+    blocks.append(_break(coding_end))
+    blocks.append(
+        NewBlock(
+            theory_start,
+            theory_end,
+            "💻 Interview Prep — Theory",
+            "T2",
+            "InterviewPrep",
+            "One curriculum module. Rate what you can defend, not what you recognise.",
+            deep_work=True,
+        )
+    )
+    if _minutes_between(theory_end, time(20, 40)) >= 10:
+        blocks.append(
+            NewBlock(
+                theory_end,
+                time(20, 40),
+                "🔄 Log the day + plan tomorrow's first task",
+                "T2",
+                "Recovery",
+                "Rate what you covered, then write down the single thing you start with tomorrow.",
+            )
+        )
+
+    return [b for b in blocks if b.minutes > 0]
+
+
+def _in_managed_window(t: time | None) -> bool:
+    return t is not None and any(lo <= t < hi for lo, hi in MANAGED_WINDOWS)
+
+
+def _print_day(label: str, blocks: list[NewBlock]) -> None:
+    print(f"{label} ({len(blocks)} managed blocks):")
+    for b in blocks:
+        flag = "   <- screen-free" if b.category == "Recovery" else ""
+        print(
+            f"  {b.start.strftime('%H:%M')}-{b.end.strftime('%H:%M')}  {b.minutes:>3}m  "
+            f"{b.tier}  {b.category:<13} {b.activity[:48]}{flag}"
+        )
+    focus = [b.minutes for b in blocks if b.deep_work]
+    recovery = sum(b.minutes for b in blocks if b.category == "Recovery")
+    print(
+        f"\n  focus {sum(focus)}m in {len(focus)} blocks · longest {max(focus, default=0)}m · "
+        f"screen-free recovery {recovery}m"
+    )
+
+
+async def main(apply: bool, all_dates: bool) -> None:
+    settings = get_settings()
+    today = datetime.now(ZoneInfo(settings.timezone)).date()
+    end = date_(2026, 12, 31) if all_dates else today
+    if end < today:
+        print("Nothing to do: the schedule ends before today.")
+        return
+
+    async with SessionLocal() as session:
+        user_ids = [u.id for u in (await session.execute(select(User))).scalars().all()]
+        prayer = {
+            pt.date: pt
+            for pt in (await session.execute(select(PrayerTimes).where(PrayerTimes.date >= today)))
+            .scalars()
+            .all()
+        }
+
+        dates = [today + timedelta(days=i) for i in range((end - today).days + 1)]
+        absent = [d for d in dates if d not in prayer]
+        if absent:
+            print(f"No PrayerTimes row for {len(absent)} date(s); skipping those.\n")
+        dates = [d for d in dates if d in prayer]
+        if not dates:
+            print("No dates with prayer times to rebuild.")
+            return
+
+        async def blocks_for(uid: uuid.UUID, d: date_) -> list[TimeBlock]:
+            return list(
+                (
+                    await session.execute(
+                        select(TimeBlock).where(TimeBlock.user_id == uid, TimeBlock.date == d)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        print(f"{len(dates)} date(s), {len(user_ids)} user(s)\n")
+        # Preview a real job day, not merely whichever date comes first.
+        sample_date: date_ | None = None
+        for d in reversed(dates):
+            if is_job_day(await blocks_for(user_ids[0], d)):
+                sample_date = d
+                break
+        if sample_date is None:
+            print("No job days in range - nothing to restructure.")
+            return
+        _print_day(
+            f"Rebuilt job day, e.g. {sample_date}",
+            build_day(prayer[sample_date], await blocks_for(user_ids[0], sample_date)),
+        )
+
+        if not apply:
+            print("\nDry run. Re-run with --apply to write.")
+            return
+
+        now_time = datetime.now(ZoneInfo(settings.timezone)).time()
+
+        replaced = inserted = protected = non_job_days = 0
+        for d in dates:
+            # Never rewrite the past. Today is rebuilt from the current
+            # time forward only: the morning already happened, and a block
+            # you have finished is history, not a plan.
+            cutoff = now_time if d == today else time(0, 0)
+            for uid in user_ids:
+                existing = await blocks_for(uid, d)
+                # Weekends and holidays keep their own shape.
+                if not is_job_day(existing):
+                    non_job_days += 1
+                    continue
+                all_new = build_day(prayer[d], existing)
+                new_blocks = [b for b in all_new if b.start >= cutoff]
+                candidates = [
+                    b
+                    for b in existing
+                    if _in_managed_window(b.start_resolved)
+                    and b.start_resolved is not None
+                    and b.start_resolved >= cutoff
+                ]
+                # A block with work recorded against it is history, not a
+                # plan - preserve it even if it sits after the cutoff.
+                doomed = [b for b in candidates if b.status == "NOT DONE" and not b.actual_minutes]
+                protected += len(candidates) - len(doomed)
+
+                if doomed:
+                    await session.execute(
+                        delete(TimeBlock).where(TimeBlock.id.in_([b.id for b in doomed]))
+                    )
+                    replaced += len(doomed)
+
+                # Provisional negative seqs, distinct per block: (user, date,
+                # seq) is unique, so inserting them all as 0 collides with
+                # itself before the renumber below ever runs.
+                # A pre-cutoff block is normally left alone as history, but
+                # an *unstarted* one whose replacement now exists later the
+                # same day is not history - it is a duplicate. Running this
+                # script at 12:20 left today with two Zuhr blocks that way.
+                new_activities = {nb.activity for nb in new_blocks}
+                superseded = [
+                    b
+                    for b in existing
+                    if b.start_resolved is not None
+                    and b.start_resolved < cutoff
+                    and b.status == "NOT DONE"
+                    and not b.actual_minutes
+                    and b.activity in new_activities
+                ]
+                if superseded:
+                    await session.execute(
+                        delete(TimeBlock).where(TimeBlock.id.in_([b.id for b in superseded]))
+                    )
+                    replaced += len(superseded)
+
+                for provisional, nb in enumerate(new_blocks, 1):
+                    session.add(
+                        TimeBlock(
+                            user_id=uid,
+                            date=d,
+                            seq=-(1000 + provisional),
+                            start_spec=nb.start.strftime("%H:%M"),
+                            end_spec=nb.end.strftime("%H:%M"),
+                            start_resolved=nb.start,
+                            end_resolved=nb.end,
+                            activity=nb.activity,
+                            tier=nb.tier,
+                            category=nb.category,
+                            planned_minutes=nb.minutes,
+                            status="NOT DONE",
+                            what_to_do=nb.what_to_do,
+                            notes=nb.notes,
+                            deep_work=nb.deep_work,
+                        )
+                    )
+                    inserted += 1
+                await session.flush()
+
+                # Renumber the day. Two passes, because (user, date, seq) is
+                # unique and a single pass collides mid-renumber.
+                everything = list(
+                    (
+                        await session.execute(
+                            select(TimeBlock).where(TimeBlock.user_id == uid, TimeBlock.date == d)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                everything.sort(key=lambda b: (b.start_resolved or time(0, 0), b.id))
+                for i, b in enumerate(everything, 1):
+                    b.seq = -i
+                await session.flush()
+                for i, b in enumerate(everything, 1):
+                    b.seq = i
+                await session.flush()
+
+        await session.commit()
+        print(f"\nReplaced {replaced}, inserted {inserted} across {len(dates)} date(s).")
+        if protected:
+            print(f"Preserved {protected} block(s) that already had work recorded against them.")
+        if non_job_days:
+            print(
+                f"Left {non_job_days} non-job user-day(s) untouched "
+                f"(weekends and holidays keep their own schedule)."
+            )
+        print(f"Today rebuilt from {now_time.strftime('%H:%M')} onward; earlier blocks left alone.")
+
+
+if __name__ == "__main__":
+    asyncio.run(main(apply="--apply" in sys.argv, all_dates="--all-dates" in sys.argv))

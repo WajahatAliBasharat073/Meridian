@@ -40,7 +40,8 @@ from app.models.life import (
     NutritionLog,
     OperatingRule,
     Pattern,
-    ReadingLog,
+    ReadingBook,
+    ReadingSession,
     RecoveryLog,
     ThesisLog,
     TimeLeak,
@@ -93,11 +94,13 @@ MEALS: list[tuple[str, str, int, float]] = [
     ("Greek yogurt", "snack", 150, 15.0),
 ]
 
-READING: list[tuple[str, str, str]] = [
-    ("Cracking the Coding Interview", "Gayle Laakmann McDowell", "book"),
-    ("Designing Data-Intensive Applications", "Martin Kleppmann", "book"),
-    ("Deep Work", "Cal Newport", "book"),
-    ("Attention Is All You Need", "Vaswani et al.", "paper"),
+# (title, author, format, total_pages, category) — total_pages/category
+# feed the reading_books columns those fields were added for.
+READING: list[tuple[str, str, str, int, str]] = [
+    ("Cracking the Coding Interview", "Gayle Laakmann McDowell", "book", 687, "technical"),
+    ("Designing Data-Intensive Applications", "Martin Kleppmann", "book", 616, "technical"),
+    ("Deep Work", "Cal Newport", "book", 304, "self_help"),
+    ("Attention Is All You Need", "Vaswani et al.", "paper", 15, "technical"),
 ]
 
 TIME_LEAK_TRIGGERS = [
@@ -131,8 +134,8 @@ DAY_TEMPLATE: list[BlockTemplate] = [
     BlockTemplate(5, "08:00", "08:15", "Vocabulary — 5 words", "T2", "English", 15, "Spaced-repetition vocab queue"),
     BlockTemplate(6, "08:15", "09:00", "Buffer", "T4", "Buffer", 45, "Commute / admin / slack"),
     BlockTemplate(7, "09:00", "12:00", "Job — deep work block", "T1", "Job", 180, "Primary work tasks"),
-    BlockTemplate(8, "zuhr", "zuhr+15m", "Zuhr prayer", "T1", "Prayer", 15, "Pray Zuhr"),
-    BlockTemplate(9, "zuhr+15m", "13:00", "Lunch", "T3", "Nutrition", 30, "Eat, no screens"),
+    BlockTemplate(8, "zuhr", "zuhr+30m", "Lunch", "T3", "Nutrition", 30, "Eat, no screens"),
+    BlockTemplate(9, "zuhr+30m", "13:00", "Zuhr prayer", "T1", "Prayer", 15, "Pray Zuhr"),
     BlockTemplate(10, "13:00", "17:00", "Job — afternoon block", "T1", "Job", 240, "Primary work tasks"),
     BlockTemplate(11, "asr", "asr+15m", "Asr prayer", "T1", "Prayer", 15, "Pray Asr"),
     BlockTemplate(12, "asr+15m", "18:00", "Thesis", "T2", "Thesis", 45, "Work-log entry"),
@@ -175,7 +178,8 @@ async def _wipe(session: AsyncSession) -> None:
     for model in (
         MealPlan,
         Meal,
-        ReadingLog,
+        ReadingSession,
+        ReadingBook,
         TimeLeak,
         ThesisLog,
         RecoveryLog,
@@ -250,6 +254,21 @@ async def seed(days: int, force: bool) -> None:
         flat_problems = [p for group in all_problems for p in group]
         scheduled_days = [d for d in window if d.weekday() < 6]  # skip Sunday
         curriculum_days = [d for d in scheduled_days if d <= today][: len(flat_problems)]
+
+        # Reference-entity/session-log split: create the books once, then log
+        # per-day sessions against them below — mirrors the real app's shape
+        # instead of writing one flat row per day like the old ReadingLog did.
+        reading_books: list[ReadingBook] = []
+        for title, author, fmt, total_pages, category in READING:
+            book = ReadingBook(
+                user_id=STUB_USER_ID, title=title, author=author, total_pages=total_pages,
+                format=fmt, category=category, status="reading",
+                started_date=window[0], created_at=datetime.now(),
+            )
+            session.add(book)
+            reading_books.append(book)
+        await session.flush()
+        reading_pages = [0] * len(reading_books)
 
         vocab_i = 0
         for d in window:
@@ -329,11 +348,16 @@ async def seed(days: int, force: bool) -> None:
                         )
                     )
                 if d.day % 4 == 0:
-                    title, author, kind = READING[d.day % len(READING)]
+                    idx = d.day % len(reading_books)
+                    book = reading_books[idx]
+                    reading_pages[idx] = min(
+                        book.total_pages or 0, reading_pages[idx] + rng.randint(8, 25)
+                    )
                     session.add(
-                        ReadingLog(
-                            user_id=STUB_USER_ID, date=d, title=title, author=author,
-                            kind=kind, status="in_progress",
+                        ReadingSession(
+                            user_id=STUB_USER_ID, book_id=book.id, date=d,
+                            page_reached=reading_pages[idx], minutes=rng.randint(15, 60),
+                            created_at=datetime.now(),
                         )
                     )
                 if d.day % 3 == 1:

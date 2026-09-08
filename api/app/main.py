@@ -6,9 +6,11 @@ from app.routers import (
     ai_settings,
     attempts,
     blocks,
+    coach,
     concepts,
     daily_recap,
     dashboard,
+    focus_sessions,
     goals,
     life_logs,
     problems,
@@ -19,6 +21,8 @@ from app.routers import (
     reviews,
     time_budgets,
     today,
+    verification,
+    vitals,
     weekly_review,
 )
 
@@ -50,7 +54,11 @@ app.include_router(time_budgets.router)
 app.include_router(reflections.router)
 app.include_router(weekly_review.router)
 app.include_router(ai_settings.router)
+app.include_router(focus_sessions.router)
+app.include_router(coach.router)
 app.include_router(life_logs.router)
+app.include_router(verification.router)
+app.include_router(vitals.router)
 
 
 @app.get("/health")

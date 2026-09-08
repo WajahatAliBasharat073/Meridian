@@ -10,9 +10,16 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.engines.block_lock import (
+    BlockLockedError,
+    TooEarlyToCompleteError,
+    is_block_locked,
+    is_too_early_to_complete,
+)
 from app.engines.prayer import PrayerConvention, PrayerTimesResult, compute_prayer_times
 from app.engines.scheduling import resolve_spec
 from app.models.core import PrayerTimes, TimeBlock
+from app.models.sessions import FocusSession
 
 
 async def get_or_compute_prayer_times(
@@ -132,10 +139,39 @@ async def update_block_status(
     block_id: int,
     status: str,
     actual_minutes: int | None,
+    now: datetime,
 ) -> TimeBlock | None:
+    """`now` is required (not read from the clock in here) so this stays as
+    testable as the rest of the layer, and so it's unambiguously the same
+    "now" the caller used to decide anything else about the request.
+
+    Raises BlockLockedError when marking a block DONE would claim real
+    work happened on it after most of its window passed with no focus
+    session ever started, and TooEarlyToCompleteError when marking it DONE
+    while most of its window is still ahead — see app/engines/block_lock.py.
+    """
     block = await session.get(TimeBlock, block_id)
     if block is None or block.user_id != user_id:
         return None
+
+    if status == "DONE" and block.date == now.date():
+        already_engaged = (
+            await session.execute(
+                select(FocusSession.id)
+                .where(FocusSession.user_id == user_id, FocusSession.block_id == block_id)
+                .limit(1)
+            )
+        ).first() is not None
+        if is_block_locked(block.start_resolved, block.planned_minutes, now.time(), already_engaged):
+            raise BlockLockedError(
+                "Most of this block's window passed without starting focus on it"
+            )
+        if is_too_early_to_complete(block.end_resolved, now.time()):
+            raise TooEarlyToCompleteError(
+                "Too early to mark this done — wait until the last "
+                "5 minutes of its window (or after it ends)"
+            )
+
     block.status = status
     if actual_minutes is not None:
         block.actual_minutes = actual_minutes
