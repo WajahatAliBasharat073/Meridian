@@ -12,6 +12,8 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { cn } from "@/lib/cn";
 import { ALL_NAV_ITEMS, isNavActive } from "@/lib/nav";
 
+import { NotificationCenter } from "@/components/ui/NotificationCenter";
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
@@ -20,6 +22,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen">
+      <NotificationCenter />
       <TopNav />
 
       <div className="md:hidden sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur flex items-center justify-between h-14 px-3">

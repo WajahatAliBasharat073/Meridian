@@ -76,7 +76,13 @@ export function useSubmitAttempt() {
   return useMutation({
     mutationFn: (input: AttemptInput) => submitAttempt(input),
     onSuccess: () => {
+      // An attempt changes the problem's mastery and the solved counts, so
+      // every view that reads them has to refetch. Invalidating only Today
+      // is why a logged attempt left the Problems list still showing "Not
+      // attempted".
       queryClient.invalidateQueries({ queryKey: TODAY_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["problems"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
     },
   });
 }

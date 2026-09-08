@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/ui/query-state";
 import { ConceptCard } from "@/components/concepts/ConceptCard";
 import { QuestionFlashcards } from "@/components/concepts/QuestionFlashcards";
+import { ResourceList } from "@/components/concepts/ResourceList";
 import { useConcepts } from "@/hooks/useConcepts";
 import { categoryMeta } from "@/lib/conceptCategories";
 
@@ -95,7 +96,10 @@ export default function ConceptCategoryPage() {
         )}
       </div>
 
-      <QuestionFlashcards category={meta.key} />
+      <div className="space-y-5">
+        <QuestionFlashcards category={meta.key} />
+        <ResourceList category={meta.key} title={`${meta.label} resources`} />
+      </div>
     </PageContainer>
   );
 }

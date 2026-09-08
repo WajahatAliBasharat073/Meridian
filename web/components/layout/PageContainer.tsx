@@ -1,9 +1,11 @@
 import { cn } from "@/lib/cn";
 
 const WIDTH = {
-  narrow: "max-w-lg",
+  narrow:  "max-w-lg",
   default: "max-w-3xl",
-  wide: "max-w-5xl",
+  wide:    "max-w-5xl",
+  xl:      "max-w-7xl",
+  full:    "max-w-none",
 } as const;
 
 export function PageContainer({

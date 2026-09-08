@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
+import { LifeClockPill } from "@/components/layout/LifeClockPill";
+import { NotificationBellButton } from "@/components/ui/NotificationCenter";
 import { cn } from "@/lib/cn";
 import { isNavActive, NAV_GROUPS, SETTINGS_ITEM, type NavGroup, type NavItem } from "@/lib/nav";
 
@@ -159,7 +161,9 @@ export function TopNav() {
         ))}
       </nav>
 
-      <div className="flex items-center justify-end shrink-0">
+      <div className="flex items-center justify-end gap-1 shrink-0">
+        <LifeClockPill />
+        <NotificationBellButton />
         <Link
           href={SETTINGS_ITEM.href}
           aria-current={isNavActive(pathname, SETTINGS_ITEM.href) ? "page" : undefined}

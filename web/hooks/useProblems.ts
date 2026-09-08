@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { getProblems } from "@/lib/api";
+import { getProblemsByTopic } from "@/lib/api";
 
-export function useProblems(pattern?: string, difficulty?: string) {
+/** The whole bank grouped by data structure, each section carrying its
+ * "learn this first" guide. One request: the page renders every section. */
+export function useProblemsByTopic() {
   return useQuery({
-    queryKey: ["problems", pattern, difficulty],
-    queryFn: () => getProblems(pattern, difficulty),
+    queryKey: ["problems-by-topic"],
+    queryFn: () => getProblemsByTopic(),
   });
 }

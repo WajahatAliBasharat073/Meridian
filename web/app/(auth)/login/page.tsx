@@ -10,6 +10,7 @@ import { Alert } from "@/components/ui/alert";
 import { Logo } from "@/components/brand/Logo";
 import { MeridianArc } from "@/components/MeridianArc";
 import { createClient } from "@/lib/supabase/client";
+import { waitForServerSession } from "@/lib/auth-handoff";
 
 type Mode = "signin" | "signup";
 
@@ -44,6 +45,22 @@ export default function LoginPage() {
       setLoading(false);
       setNotice("Account created — check your email to confirm it, then sign in.");
       setMode("signin");
+      return;
+    }
+
+    // The session cookie is written by @supabase/ssr via document.cookie
+    // and is NOT guaranteed to be in the jar the moment the promise above
+    // resolves. Navigating straight away races that write — the request
+    // for /today goes out with no cookie, middleware bounces it to /login,
+    // and a successful sign-in looks like a failed one. Wait for the
+    // server to actually accept the session first.
+    const ready = await waitForServerSession();
+
+    if (!ready) {
+      setLoading(false);
+      setError(
+        "Signed in, but the session cookie didn't reach the server. If you're viewing this in an embedded browser (e.g. VS Code's preview pane), open it in a normal browser window."
+      );
       return;
     }
 
