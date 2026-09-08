@@ -27,3 +27,11 @@ web/out/
 # OS / editor
 .DS_Store
 *.log
+
+# Cloned reference repositories (MIT / unlicensed upstreams) — read for the
+# interview curriculum ingestion, never redistributed from this repo.
+external/
+
+# Local uvicorn dev-server logs (see meridian-dev-servers notes)
+api/uv_*.log
+api/uvicorn_*.log
