@@ -21,9 +21,9 @@ Three changes, applied from today forward:
    move roughly 80 minutes across Sep-Dec, so dinner is placed to end just
    after Isha comes in (about 19:20-19:55 in September, tracking earlier by
    itself in winter) and theory is split around that single break rather
-   than being interrupted twice. Vocabulary is 30 minutes, reading 20, and
-   the night routine is laid out backwards from lights-out at 22:30 so it
-   always fits.
+   than being interrupted twice. The night routine — grammar 30, vocabulary
+   20, reading 20, shutdown 15 — is laid out backwards from lights-out at
+   22:30 so it always fits.
 
 Why 90/15 and not Pomodoro's 25/5: 25-minute cycles suit shallow,
 interruptible work, and the context-switch cost is wrong for debugging or
@@ -90,8 +90,12 @@ MANAGED_WINDOWS: list[tuple[time, time]] = [
     (time(17, 0), time(22, 30)),
 ]
 
-# Night routine, after dinner and Isha.
-VOCAB_MINUTES = 30
+# Night routine, after dinner and Isha. Grammar and vocabulary are separate
+# blocks on purpose: they are different kinds of work — one is study of
+# rules, the other is spaced-repetition recall — and merging them into one
+# "English" slot lets the recall queue quietly get skipped.
+GRAMMAR_MINUTES = 30
+VOCAB_MINUTES = 20
 READING_MINUTES = 20
 SHUTDOWN_NIGHT_MINUTES = 15
 DINNER_MINUTES = 35
@@ -380,6 +384,7 @@ def build_day(pt: PrayerTimes, existing: list[TimeBlock]) -> list[NewBlock]:
     shutdown_start = _shift(LIGHTS_OUT, -SHUTDOWN_NIGHT_MINUTES)
     reading_start = _shift(shutdown_start, -READING_MINUTES)
     vocab_start = _shift(reading_start, -VOCAB_MINUTES)
+    grammar_start = _shift(vocab_start, -GRAMMAR_MINUTES)
 
     blocks.append(
         NewBlock(pt.maghrib, maghrib_end, "🕌 Maghrib", "T1", "Prayer", "Pray Maghrib.")
@@ -402,7 +407,7 @@ def build_day(pt: PrayerTimes, existing: list[TimeBlock]) -> list[NewBlock]:
     slots: list[tuple[time, time]] = [
         (prep_start, pt.maghrib),
         (maghrib_end, dinner_start),
-        (isha_end, vocab_start),
+        (isha_end, grammar_start),
     ]
 
     # Priority order: coding first. When the evening is short, it is theory
@@ -482,6 +487,16 @@ def build_day(pt: PrayerTimes, existing: list[TimeBlock]) -> list[NewBlock]:
             )
             break
 
+    blocks.append(
+        NewBlock(
+            grammar_start,
+            vocab_start,
+            "📚 English Grammar Learning",
+            "T2",
+            "English",
+            "One grammar topic: the rule, then your own sentences using it.",
+        )
+    )
     blocks.append(
         NewBlock(
             vocab_start,
