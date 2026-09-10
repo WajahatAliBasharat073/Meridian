@@ -22,6 +22,9 @@ import type {
   TheoryPaceOut,
   InterviewModuleOut,
   QuestionOut,
+  LearningStatus,
+  QuestionStatusInput,
+  QuestionStatusOut,
   QuestionSummaryOut,
   RecommendationOut,
   ReviewDueOut,
@@ -230,17 +233,35 @@ export function getDailyRecap(): Promise<DailyRecapOut> {
   return request<DailyRecapOut>("/api/daily-recap", { cache: "no-store" });
 }
 
-export function getQuestions(
-  category?: string,
-  module?: string,
-  priority?: string,
-  company?: string
-): Promise<QuestionOut[]> {
+export interface QuestionFilters {
+  category?: string;
+  module?: string;
+  priority?: string;
+  company?: string;
+  /** Curriculum position filters (migration 0019/0020). */
+  topic?: string;
+  phase?: number;
+  difficulty?: string;
+  /** This user's self-tag / revisit flag / attempted state. Combine
+   * freely with the curriculum filters above — e.g. topic + phase +
+   * learningStatus together returns only questions matching all three. */
+  learningStatus?: LearningStatus;
+  needsReview?: boolean;
+  attempted?: boolean;
+}
+
+export function getQuestions(filters: QuestionFilters = {}): Promise<QuestionOut[]> {
   const params = new URLSearchParams();
-  if (category) params.set("category", category);
-  if (module) params.set("module", module);
-  if (priority) params.set("priority", priority);
-  if (company) params.set("company", company);
+  if (filters.category) params.set("category", filters.category);
+  if (filters.module) params.set("module", filters.module);
+  if (filters.priority) params.set("priority", filters.priority);
+  if (filters.company) params.set("company", filters.company);
+  if (filters.topic) params.set("topic", filters.topic);
+  if (filters.phase != null) params.set("phase", String(filters.phase));
+  if (filters.difficulty) params.set("difficulty", filters.difficulty);
+  if (filters.learningStatus) params.set("learning_status", filters.learningStatus);
+  if (filters.needsReview != null) params.set("needs_review", String(filters.needsReview));
+  if (filters.attempted != null) params.set("attempted", String(filters.attempted));
   const qs = params.toString();
   return request<QuestionOut[]>(`/api/questions${qs ? `?${qs}` : ""}`, { cache: "no-store" });
 }
@@ -258,6 +279,23 @@ export function setQuestionMastery(
   return request<{ mastery: number; label: string }>(`/api/questions/${questionId}/mastery`, {
     method: "PUT",
     body: JSON.stringify({ mastery, notes, minutes }),
+  });
+}
+
+/** Sets the self-tag and/or revisit flag. Independent of mastery — never
+ * touches the 0-7 ladder. Pass `needsReview` to override the auto-derived
+ * flag (e.g. "solved with help" but you don't actually need to revisit
+ * this one); omit it to let the server derive it from the status. */
+export function setQuestionStatus(
+  questionId: number,
+  input: QuestionStatusInput
+): Promise<QuestionStatusOut> {
+  return request<QuestionStatusOut>(`/api/questions/${questionId}/status`, {
+    method: "PUT",
+    body: JSON.stringify({
+      learning_status: input.learning_status ?? null,
+      needs_review: input.needs_review ?? null,
+    }),
   });
 }
 

@@ -6,12 +6,18 @@ import {
   getQuestionsSummary,
   getTheoryPace,
   setQuestionMastery,
+  setQuestionStatus,
+  type QuestionFilters,
 } from "@/lib/api";
+import type { QuestionStatusInput } from "@/lib/types";
 
-export function useQuestions(category?: string, module?: string) {
+export function useQuestions(filters: QuestionFilters = {}) {
   return useQuery({
-    queryKey: ["questions", category, module],
-    queryFn: () => getQuestions(category, module),
+    // Every filter value is part of the cache key, so changing any one of
+    // them — topic, phase, status, needs-review, attempted — refetches
+    // rather than silently showing the previous filter's results.
+    queryKey: ["questions", filters],
+    queryFn: () => getQuestions(filters),
   });
 }
 
@@ -59,6 +65,23 @@ export function useSetQuestionMastery() {
       if (variables.minutes != null) {
         queryClient.invalidateQueries({ queryKey: ["theory-pace"] });
       }
+    },
+  });
+}
+
+/** Sets the self-tag and/or revisit flag. Independent of mastery — a
+ * status change never moves the mastery ladder or the readiness percentage,
+ * only the personal filtering (`useQuestions({ learningStatus, ... })`). */
+export function useSetQuestionStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      questionId,
+      ...input
+    }: { questionId: number } & QuestionStatusInput) => setQuestionStatus(questionId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["questions"] });
     },
   });
 }

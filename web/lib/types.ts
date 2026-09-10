@@ -393,6 +393,46 @@ export interface QuestionOut {
   /** A real reference implementation, for coding questions backed by an
    * actual source file (Module B). Null for every other question type. */
   reference_solution: string | null;
+
+  /** Curriculum position (migration 0019/0020) — null until classified. */
+  topic: string | null;
+  phase: number | null;
+  cognitive_level: number | null;
+
+  /** This user's self-tag and revisit flag (migration 0021). Independent
+   * of `mastery` — never fed into curriculum mastery, purely a personal
+   * filtering aid. */
+  learning_status: LearningStatus | null;
+  needs_review: boolean;
+}
+
+/** Mirrors api/app/schemas.py — "not_attempted" is deliberately not a
+ * member: it is `learning_status === null`, not a stored value. */
+export type LearningStatus =
+  | "already_know"
+  | "easy"
+  | "understood"
+  | "solved_with_help"
+  | "struggled"
+  | "no_idea";
+
+export const LEARNING_STATUS_LABELS: Record<LearningStatus, string> = {
+  already_know: "Already know",
+  easy: "Easy",
+  understood: "Understood",
+  solved_with_help: "Solved with help",
+  struggled: "Struggled",
+  no_idea: "No idea",
+};
+
+export interface QuestionStatusInput {
+  learning_status?: LearningStatus | null;
+  needs_review?: boolean | null;
+}
+
+export interface QuestionStatusOut {
+  learning_status: LearningStatus | null;
+  needs_review: boolean;
 }
 
 /** One of today's recommended theory questions — the full QuestionOut

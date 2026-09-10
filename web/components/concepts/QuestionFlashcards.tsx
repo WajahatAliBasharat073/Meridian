@@ -1,15 +1,43 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronLeft, ChevronRight, ExternalLink, Info } from "lucide-react";
-import { useQuestions, useSetQuestionMastery } from "@/hooks/useQuestions";
+import { useMemo, useState } from "react";
+import { Bookmark, ChevronLeft, ChevronRight, ExternalLink, Info } from "lucide-react";
+import { useQuestions, useSetQuestionMastery, useSetQuestionStatus } from "@/hooks/useQuestions";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ReferenceSolution } from "@/components/concepts/ReferenceSolution";
 import { cn } from "@/lib/cn";
-import { QUESTION_MASTERY, READY_MASTERY, type QuestionOut } from "@/lib/types";
+import {
+  LEARNING_STATUS_LABELS,
+  QUESTION_MASTERY,
+  READY_MASTERY,
+  type LearningStatus,
+  type QuestionOut,
+} from "@/lib/types";
+
+/** Colour for each status, reusing the app's semantic tokens rather than
+ * inventing a new palette — green/confident, amber/needs-help, red/gap. */
+const STATUS_COLOR: Record<LearningStatus, string> = {
+  already_know: "var(--status-done)",
+  easy: "var(--status-done)",
+  understood: "var(--accent-strong)",
+  solved_with_help: "var(--status-partial)",
+  struggled: "var(--danger)",
+  no_idea: "var(--danger)",
+};
+
+const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "All" },
+  { value: "not_attempted", label: "Not attempted" },
+  ...(Object.keys(LEARNING_STATUS_LABELS) as LearningStatus[]).map((s) => ({
+    value: s,
+    label: LEARNING_STATUS_LABELS[s],
+  })),
+  { value: "needs_review", label: "Needs review" },
+];
 
 const EVIDENCE_LABEL: Record<string, string> = {
   reported: "Reported",
@@ -33,17 +61,61 @@ const DIFFICULTY_COLOR: Record<string, string> = {
 };
 
 export function QuestionFlashcards({ category, module }: { category?: string; module?: string }) {
-  const { data, isLoading } = useQuestions(category, module);
+  const [statusFilter, setStatusFilter] = useState("");
+  const { data: allData, isLoading } = useQuestions({ category, module });
 
-  if (isLoading) return <Skeleton className="h-48" />;
-  if (!data || data.length === 0) return null;
+  // "not_attempted" and "needs_review" aren't `learning_status` values —
+  // they read `mastery`/`needs_review` instead — so they're applied
+  // client-side over the already-fetched set rather than as a server
+  // query param the API wouldn't recognise.
+  const data = useMemo(() => {
+    if (!allData) return allData;
+    if (statusFilter === "") return allData;
+    if (statusFilter === "not_attempted") return allData.filter((q) => q.mastery === 0);
+    if (statusFilter === "needs_review") return allData.filter((q) => q.needs_review);
+    return allData.filter((q) => q.learning_status === statusFilter);
+  }, [allData, statusFilter]);
 
-  // Keying remounts (and re-picks a starting question) on navigation.
-  return <QuestionFlashcardsLoaded key={`${category ?? ""}:${module ?? ""}`} data={data} />;
+  return (
+    <div>
+      <div className="flex items-center justify-end mb-3">
+        <Select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          aria-label="Filter by learning status"
+          className="h-8 text-xs w-auto"
+        >
+          {STATUS_FILTER_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+
+      {isLoading && <Skeleton className="h-48" />}
+      {!isLoading && (!data || data.length === 0) && (
+        <p className="text-xs text-text-faint py-6 text-center">
+          {statusFilter
+            ? "No questions match this filter."
+            : "No interview questions in this section yet."}
+        </p>
+      )}
+      {data && data.length > 0 && (
+        // Keying remounts (and re-picks a starting question) on navigation
+        // or when the filter changes the underlying set.
+        <QuestionFlashcardsLoaded
+          key={`${category ?? ""}:${module ?? ""}:${statusFilter}`}
+          data={data}
+        />
+      )}
+    </div>
+  );
 }
 
 function QuestionFlashcardsLoaded({ data }: { data: QuestionOut[] }) {
   const setMastery = useSetQuestionMastery();
+  const setStatus = useSetQuestionStatus();
   // Lazy initializer reads `data` once, at mount — lands on the first
   // question not yet at the readiness bar rather than always at #1.
   const [index, setIndex] = useState(() => {
@@ -208,6 +280,73 @@ function QuestionFlashcardsLoaded({ data }: { data: QuestionOut[] }) {
                 <span className="hidden sm:inline"> · {m.short}</span>
               </button>
             ))}
+          </div>
+        </div>
+
+        <div className="border-t border-border pt-3 mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] uppercase tracking-wide text-text-faint">
+              How did it go?
+            </p>
+            {current.needs_review && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-status-partial">
+                <Bookmark size={11} fill="currentColor" /> Flagged for revisit
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {(Object.keys(LEARNING_STATUS_LABELS) as LearningStatus[]).map((s) => (
+              <button
+                key={s}
+                type="button"
+                disabled={setStatus.isPending}
+                onClick={() =>
+                  setStatus.mutate({
+                    questionId: current.question_id,
+                    // Clicking the already-selected status clears it —
+                    // "how did it go" is meant to be correctable, not a
+                    // one-way ratchet.
+                    learning_status: current.learning_status === s ? null : s,
+                  })
+                }
+                className={cn(
+                  "h-8 px-2.5 rounded-md text-[11px] font-medium border transition-colors",
+                  current.learning_status === s
+                    ? "text-bg"
+                    : "border-border text-text-muted hover:bg-surface-2 hover:text-text"
+                )}
+                style={
+                  current.learning_status === s
+                    ? { borderColor: STATUS_COLOR[s], backgroundColor: STATUS_COLOR[s] }
+                    : undefined
+                }
+              >
+                {LEARNING_STATUS_LABELS[s]}
+              </button>
+            ))}
+            <button
+              type="button"
+              disabled={setStatus.isPending}
+              onClick={() =>
+                setStatus.mutate({
+                  questionId: current.question_id,
+                  needs_review: !current.needs_review,
+                })
+              }
+              title={
+                current.needs_review ? "Remove from revisit list" : "Flag for revisit later"
+              }
+              aria-pressed={current.needs_review}
+              className={cn(
+                "h-8 px-2.5 rounded-md text-[11px] font-medium border transition-colors inline-flex items-center gap-1",
+                current.needs_review
+                  ? "border-status-partial bg-status-partial/10 text-status-partial"
+                  : "border-border text-text-muted hover:bg-surface-2 hover:text-text"
+              )}
+            >
+              <Bookmark size={11} fill={current.needs_review ? "currentColor" : "none"} />
+              Revisit
+            </button>
           </div>
         </div>
 

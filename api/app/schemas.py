@@ -198,6 +198,24 @@ class InterviewModuleOut(BaseModel):
     pct: float
 
 
+#: A self-tag layered on top of the 0-7 mastery ladder — see
+#: QuestionProgress.learning_status and migration 0021. "not_attempted" is
+#: not a member: it is the absence of any status, which the frontend
+#: renders from `learning_status is None` rather than a stored value.
+LearningStatus = Literal[
+    "already_know", "easy", "understood", "solved_with_help", "struggled", "no_idea",
+]
+
+LEARNING_STATUS_LABELS: dict[str, str] = {
+    "already_know": "Already know",
+    "easy": "Easy",
+    "understood": "Understood",
+    "solved_with_help": "Solved with help",
+    "struggled": "Struggled",
+    "no_idea": "No idea",
+}
+
+
 class QuestionOut(BaseModel):
     question_id: int
     category: str
@@ -227,6 +245,16 @@ class QuestionOut(BaseModel):
     # actual source file (Module B). None for every other question type.
     reference_solution: str | None = None
 
+    # Curriculum position (migration 0019/0020) — None until classified.
+    topic: str | None = None
+    phase: int | None = None
+    cognitive_level: int | None = None
+
+    # This user's self-tag and revisit flag (migration 0021). None/false
+    # when the question has never been rated on this axis.
+    learning_status: LearningStatus | None = None
+    needs_review: bool = False
+
 
 class DailyTheoryPickOut(QuestionOut):
     """One of today's recommended theory questions — the full QuestionOut
@@ -248,6 +276,40 @@ class QuestionMasteryIn(BaseModel):
 class QuestionMasteryOut(BaseModel):
     mastery: int
     label: str
+
+
+#: Statuses that auto-set `needs_review` unless the caller explicitly
+#: overrides it — "solved with help, so flag it for later" is the default
+#: reading of that status, not something you have to ask for separately.
+AUTO_REVIEW_STATUSES: frozenset[str] = frozenset({"solved_with_help", "struggled", "no_idea"})
+
+
+def resolve_needs_review(learning_status: str | None, needs_review: bool | None) -> bool:
+    """The stored value of `needs_review` for a status-update call.
+
+    An explicit True/False always wins — the flag must stay independently
+    toggleable, per "I solved it with help, so I want to revisit it later"
+    being a default the learner can still override. Otherwise it derives
+    from the status: solved-with-help / struggled / no-idea flag
+    themselves for revisit; every other status (or clearing status
+    entirely) clears the flag.
+    """
+    if needs_review is not None:
+        return needs_review
+    return bool(learning_status) and learning_status in AUTO_REVIEW_STATUSES
+
+
+class QuestionStatusIn(BaseModel):
+    learning_status: LearningStatus | None = None
+    # None = derive from `learning_status` via AUTO_REVIEW_STATUSES; an
+    # explicit True/False overrides that default, since the whole feature
+    # exists so the flag can be toggled independently of status.
+    needs_review: bool | None = None
+
+
+class QuestionStatusOut(BaseModel):
+    learning_status: LearningStatus | None = None
+    needs_review: bool = False
 
 
 class CategoryCoverageOut(BaseModel):

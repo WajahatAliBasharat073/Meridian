@@ -35,8 +35,22 @@ async def list_questions(
     module_code: str | None = None,
     priority: str | None = None,
     company: str | None = None,
-) -> list[tuple[Question, int]]:
-    """(question, mastery) for every question matching the filters."""
+    topic: str | None = None,
+    phase: int | None = None,
+    difficulty: str | None = None,
+    learning_status: str | None = None,
+    needs_review: bool | None = None,
+    attempted: bool | None = None,
+) -> list[tuple[Question, int, QuestionProgress | None]]:
+    """(question, mastery, progress row) for every question matching the
+    filters. The progress row is returned alongside the mastery int (kept
+    for compatibility with existing callers) so `learning_status` and
+    `needs_review` are available without a second query.
+
+    `attempted` filters on the *existence* of a progress row, independent
+    of `learning_status` — a question can be attempted with no status set,
+    and a status implies attempted but the reverse does not hold.
+    """
     query = select(Question)
     if category:
         query = query.where(Question.category == category)
@@ -47,20 +61,84 @@ async def list_questions(
     if company:
         # JSONB containment: the company appears in the tags array.
         query = query.where(Question.companies.contains([company]))
+    if topic:
+        query = query.where(Question.topic == topic)
+    if phase is not None:
+        query = query.where(Question.phase == phase)
+    if difficulty:
+        query = query.where(Question.difficulty == difficulty)
     query = query.order_by(Question.module_code, Question.order_index)
 
     questions = list((await session.execute(query)).scalars().all())
 
-    mastery_by_question: dict[int, int] = {}
+    progress_by_question: dict[int, QuestionProgress] = {}
     if questions:
         rows = await session.execute(
-            select(QuestionProgress.question_id, QuestionProgress.mastery).where(
-                QuestionProgress.user_id == user_id
+            select(QuestionProgress).where(QuestionProgress.user_id == user_id)
+        )
+        progress_by_question = {p.question_id: p for p in rows.scalars().all()}
+
+    out: list[tuple[Question, int, QuestionProgress | None]] = []
+    for q in questions:
+        p = progress_by_question.get(q.id)
+        if attempted is True and p is None:
+            continue
+        if attempted is False and p is not None:
+            continue
+        if learning_status is not None and (p is None or p.learning_status != learning_status):
+            continue
+        if needs_review is not None and bool(p and p.needs_review) != needs_review:
+            continue
+        out.append((q, p.mastery if p else 0, p))
+    return out
+
+
+async def set_learning_status(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    question_id: int,
+    learning_status: str | None,
+    needs_review: bool | None,
+) -> QuestionProgress:
+    """Upsert this user's self-tag and revisit flag.
+
+    A status-only call (mastery untouched) must not clobber an existing
+    mastery rating, so a fresh row is created at mastery 0 only when none
+    exists yet — the same "no row = never seen" convention `list_questions`
+    already relies on.
+    """
+    from app.schemas import resolve_needs_review
+
+    existing = (
+        await session.execute(
+            select(QuestionProgress).where(
+                QuestionProgress.user_id == user_id,
+                QuestionProgress.question_id == question_id,
             )
         )
-        mastery_by_question = {qid: m for qid, m in rows.all()}
+    ).scalar_one_or_none()
 
-    return [(q, mastery_by_question.get(q.id, 0)) for q in questions]
+    resolved_review = resolve_needs_review(learning_status, needs_review)
+
+    if existing is not None:
+        existing.learning_status = learning_status
+        existing.needs_review = resolved_review
+        existing.updated_at = datetime.now()
+        row = existing
+    else:
+        row = QuestionProgress(
+            user_id=user_id,
+            question_id=question_id,
+            mastery=0,
+            updated_at=datetime.now(),
+            learning_status=learning_status,
+            needs_review=resolved_review,
+        )
+        session.add(row)
+
+    await session.commit()
+    await session.refresh(row)
+    return row
 
 
 async def set_mastery(

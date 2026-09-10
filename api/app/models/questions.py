@@ -153,6 +153,17 @@ class QuestionProgress(Base):
     rating_count: Mapped[int] = mapped_column(Integer, default=0)
     total_minutes: Mapped[int] = mapped_column(Integer, default=0)
 
+    # A qualitative self-tag layered on top of the 0-7 ladder, never fed
+    # into curriculum mastery (migration 0021). None means not rated on
+    # this axis; "not attempted" is the absence of this whole row, which
+    # already means that everywhere else in the app.
+    learning_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Independent of status: auto-set when status is solved_with_help /
+    # struggled / no_idea, and separately toggleable by hand — "I solved it
+    # with help, so I want to revisit it later" is the workflow this exists
+    # for.
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False)
+
 
 class CurriculumTopic(Base):
     """One node of the knowledge graph: what it is, which phase, and what

@@ -16,6 +16,7 @@ from app.repositories.questions import (
     get_module_summary,
     list_modules,
     list_questions,
+    set_learning_status,
     set_mastery,
 )
 from app.schemas import (
@@ -26,6 +27,8 @@ from app.schemas import (
     QuestionMasteryIn,
     QuestionMasteryOut,
     QuestionOut,
+    QuestionStatusIn,
+    QuestionStatusOut,
     QuestionSummaryOut,
     TheoryPaceOut,
     TheoryPaceProjectionOut,
@@ -35,7 +38,7 @@ from app.services import get_daily_theory_questions, get_theory_pace
 router = APIRouter(prefix="/api/questions", tags=["questions"])
 
 
-def _to_out(q, mastery: int) -> QuestionOut:  # type: ignore[no-untyped-def]
+def _to_out(q, mastery: int, progress=None) -> QuestionOut:  # type: ignore[no-untyped-def]
     return QuestionOut(
         question_id=q.id,
         category=q.category,
@@ -59,6 +62,11 @@ def _to_out(q, mastery: int) -> QuestionOut:  # type: ignore[no-untyped-def]
         follow_ups=list(q.follow_ups or []),
         common_mistakes=list(q.common_mistakes or []),
         reference_solution=q.reference_solution,
+        topic=q.topic,
+        phase=q.phase,
+        cognitive_level=q.cognitive_level,
+        learning_status=progress.learning_status if progress else None,
+        needs_review=bool(progress.needs_review) if progress else False,
     )
 
 
@@ -70,11 +78,51 @@ async def get_questions(
     module: str | None = None,
     priority: str | None = None,
     company: str | None = None,
+    topic: str | None = None,
+    phase: int | None = None,
+    difficulty: str | None = None,
+    learning_status: str | None = None,
+    needs_review: bool | None = None,
+    attempted: bool | None = None,
 ) -> list[QuestionOut]:
+    """Filters combine with AND — topic=nlp_tasks&phase=3&learning_status=struggled
+    returns only questions matching every condition given."""
     rows = await list_questions(
-        session, user_id, category=category, module_code=module, priority=priority, company=company
+        session,
+        user_id,
+        category=category,
+        module_code=module,
+        priority=priority,
+        company=company,
+        topic=topic,
+        phase=phase,
+        difficulty=difficulty,
+        learning_status=learning_status,
+        needs_review=needs_review,
+        attempted=attempted,
     )
-    return [_to_out(q, mastery) for q, mastery in rows]
+    return [_to_out(q, mastery, progress) for q, mastery, progress in rows]
+
+
+@router.put("/{question_id}/status", response_model=QuestionStatusOut)
+async def set_question_status(
+    question_id: int,
+    payload: QuestionStatusIn,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+) -> QuestionStatusOut:
+    """Set this user's self-tag (already_know / easy / understood /
+    solved_with_help / struggled / no_idea) and/or the revisit flag.
+
+    Independent of the 0-7 mastery ladder — this never touches
+    `question_progress.mastery` and never feeds the curriculum engine's
+    mastery-fraction calculation. It exists purely for the learner's own
+    filtering: "show me what I struggled with."
+    """
+    row = await set_learning_status(
+        session, user_id, question_id, payload.learning_status, payload.needs_review
+    )
+    return QuestionStatusOut(learning_status=row.learning_status, needs_review=row.needs_review)
 
 
 @router.get("/modules", response_model=list[InterviewModuleOut])
