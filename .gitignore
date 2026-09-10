@@ -35,3 +35,6 @@ external/
 # Local uvicorn dev-server logs (see meridian-dev-servers notes)
 api/uv_*.log
 api/uvicorn_*.log
+
+# Autostart runtime logs (scripts/meridian-start.ps1)
+logs/
