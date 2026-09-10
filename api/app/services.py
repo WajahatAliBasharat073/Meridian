@@ -21,6 +21,7 @@ from app.domain import (
     WeeklyReview,
 )
 from app.engines.bandwidth import MINUTES_PER_REVIEW
+from app.engines.curriculum import build_daily_plan
 from app.engines.daily_recap import compute_daily_recap
 from app.engines.daily_theory import pick_daily_theory
 from app.engines.recommender import recommend
@@ -31,6 +32,7 @@ from app.engines.weekly_review import compute_weekly_review
 from app.models.core import TimeBlock
 from app.models.questions import Question
 from app.repositories import concepts as concepts_repo
+from app.repositories import curriculum as curriculum_repo
 from app.repositories import goals as goals_repo
 from app.repositories import problems as problems_repo
 from app.repositories import questions as questions_repo
@@ -268,28 +270,114 @@ async def get_daily_theory_questions(
     count: int = 3,
     case_study_count: int = 1,
 ) -> list[tuple[Question, int, DailyTheoryPick]]:
-    """The day's theory picks (1 case study + 2 others by default),
-    hydrated back into full `Question` rows for the API to render — the
-    engine itself only ever sees the lightweight fixtures it needs to
-    rank with (build prompt: engines never see a Session or a full ORM
-    row)."""
-    fixtures = await questions_repo.get_all_question_fixtures(session)
-    progress = await questions_repo.get_question_progress_fixtures(session, user_id)
-    picks = pick_daily_theory(fixtures, progress, today, count=count, case_study_count=case_study_count)
-    if not picks:
+    """The day's questions, chosen by the curriculum engine.
+
+    Replaces the old module-diversity + case-study-quota picker. That one
+    drew from all 724 questions and served a zero-progress learner a
+    Google case study on day one; this one draws only from the learner's
+    frontier. See CURRICULUM_AUDIT.md and app/engines/curriculum.py.
+
+    `case_study_count` is retained in the signature for callers that still
+    pass it, but is deliberately ignored: an unconditional daily case
+    study is precisely the behaviour being removed. Format share is now a
+    function of how far the learner has actually got.
+    """
+    topics = await curriculum_repo.get_topic_fixtures(session)
+    if not topics:
+        # The graph has not been seeded yet. Fall back to the legacy picker
+        # rather than returning nothing, so an un-migrated database still
+        # serves questions.
+        return await _legacy_daily_theory(session, user_id, today, count, case_study_count)
+
+    questions = await curriculum_repo.get_curriculum_questions(session)
+    progress = await curriculum_repo.get_progress_fixtures(session, user_id)
+    empty = await curriculum_repo.get_empty_topics(session)
+    frontier = await curriculum_repo.get_frontier(session, user_id)
+
+    plan = build_daily_plan(
+        topics,
+        questions,
+        progress,
+        today,
+        count=count,
+        current_topic=frontier.current_topic if frontier else None,
+        empty_topics=empty,
+    )
+    if not plan.selections:
         return []
 
+    questions_by_id = await questions_repo.get_questions_by_ids(
+        session, [s.question_id for s in plan.selections]
+    )
+    out: list[tuple[Question, int, DailyTheoryPick]] = []
+    for sel in plan.selections:
+        q = questions_by_id.get(sel.question_id)
+        if q is None:
+            continue
+        mastery = progress[sel.question_id].mastery if sel.question_id in progress else 0
+        out.append(
+            (
+                q,
+                mastery,
+                DailyTheoryPick(
+                    question_id=sel.question_id,
+                    # Kept for the existing UI, which renders a badge from
+                    # it. It is now a description of the question, not a
+                    # quota that forced it into the day.
+                    is_case_study=(q.question_type == "case_study"),
+                    reason=_describe(sel),
+                ),
+            )
+        )
+    return out
+
+
+def _describe(sel) -> str:  # type: ignore[no-untyped-def]
+    """Human-readable version of the structured reason codes."""
+    slot = {
+        "new": "New in your current topic",
+        "reinforce": "Reinforcing a prerequisite",
+        "review": "Spaced review",
+    }.get(sel.slot, sel.slot)
+    codes = {r.value for r in sel.reasons}
+    extra = []
+    if "REVIEW_DUE" in codes:
+        extra.append("due for review")
+    if "MASTERY_GAP" in codes:
+        extra.append("not yet attempted")
+    if "CURRENT_TOPIC" in codes:
+        extra.append("current topic")
+    return f"{slot}" + (f" - {', '.join(extra)}" if extra else "")
+
+
+async def _legacy_daily_theory(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    today: date,
+    count: int,
+    case_study_count: int,
+) -> list[tuple[Question, int, DailyTheoryPick]]:
+    """The pre-curriculum picker. Only reachable before the topic graph is
+    seeded; kept so a database mid-migration still works."""
+    fixtures = await questions_repo.get_all_question_fixtures(session)
+    progress = await questions_repo.get_question_progress_fixtures(session, user_id)
+    picks = pick_daily_theory(
+        fixtures, progress, today, count=count, case_study_count=case_study_count
+    )
+    if not picks:
+        return []
     questions_by_id = await questions_repo.get_questions_by_ids(
         session, [p.question_id for p in picks]
     )
     progress_by_id = {p.question_id: p for p in progress}
-
     out: list[tuple[Question, int, DailyTheoryPick]] = []
     for pick in picks:
         q = questions_by_id.get(pick.question_id)
         if q is None:
             continue
-        mastery = progress_by_id[pick.question_id].mastery if pick.question_id in progress_by_id else 0
+        mastery = (
+            progress_by_id[pick.question_id].mastery if pick.question_id in progress_by_id else 0
+        )
         out.append((q, mastery, pick))
     return out
 

@@ -8,6 +8,7 @@ from app.routers import (
     blocks,
     coach,
     concepts,
+    curriculum,
     daily_recap,
     dashboard,
     focus_sessions,
@@ -57,6 +58,7 @@ app.include_router(ai_settings.router)
 app.include_router(focus_sessions.router)
 app.include_router(coach.router)
 app.include_router(life_logs.router)
+app.include_router(curriculum.router)
 app.include_router(verification.router)
 app.include_router(vitals.router)
 

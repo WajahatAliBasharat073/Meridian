@@ -15,7 +15,9 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -69,6 +71,23 @@ class Question(Base):
     title: Mapped[str] = mapped_column(String)
     source: Mapped[str] = mapped_column(String)
     order_index: Mapped[int] = mapped_column(Integer)
+
+    # --- curriculum position (migration 0019) -------------------------
+    # `axis` is the knowledge/format split; `topic` is the single knowledge
+    # location; `phase` is P0..P5 curriculum position.
+    #
+    # Note carefully: `priority` below is *interview* priority (how often
+    # this shows up in a loop). It is NOT curriculum position and must
+    # never be used as one -- conflating them is what made a brand-new
+    # learner's day one "Design an LLM chatbot at scale", because GenAI
+    # System Design is a P0-priority module.
+    axis: Mapped[str | None] = mapped_column(String, nullable=True)
+    topic: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    phase: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    cognitive_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    primary_format: Mapped[str | None] = mapped_column(String, nullable=True)
+    preview: Mapped[bool] = mapped_column(Boolean, default=False)
+    classification_confidence: Mapped[str | None] = mapped_column(String, nullable=True)
 
     module_code: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     submodule: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -133,3 +152,58 @@ class QuestionProgress(Base):
     updated_at: Mapped[datetime] = mapped_column()
     rating_count: Mapped[int] = mapped_column(Integer, default=0)
     total_minutes: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class CurriculumTopic(Base):
+    """One node of the knowledge graph: what it is, which phase, and what
+    must be mastered before it opens.
+
+    Authored by hand in scripts/curriculum_graph.py and seeded from there,
+    because "what genuinely depends on what" is a judgement, not something
+    to be derived from the question text. See CURRICULUM_AUDIT.md.
+    """
+
+    __tablename__ = "curriculum_topics"
+    __table_args__ = (CheckConstraint("phase >= 0 AND phase <= 5", name="ck_topics_phase"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    slug: Mapped[str] = mapped_column(String, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String)
+    phase: Mapped[int] = mapped_column(Integer, index=True)
+    phase_name: Mapped[str] = mapped_column(String)
+    prereqs: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    gated: Mapped[bool] = mapped_column(Boolean, default=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class LearnerFrontier(Base):
+    """Where one learner currently is.
+
+    Deliberately small: the *set* of eligible topics is derived from the
+    graph plus question_progress on every request, so there is no second
+    copy of mastery to drift out of sync with the first.
+
+    `placement_status` exists because "no recorded progress" and "beginner"
+    are different things, and treating them as the same would send an
+    experienced engineer back to "what is supervised learning?".
+    """
+
+    __tablename__ = "learner_frontier"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_learner_frontier_user"),
+        CheckConstraint(
+            "placement_status IN ('UNASSESSED', 'ASSESSING', 'PLACED')",
+            name="ck_frontier_placement_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), index=True)
+    current_topic: Mapped[str | None] = mapped_column(String, nullable=True)
+    placement_status: Mapped[str] = mapped_column(String, default="UNASSESSED")
+    placement_phase: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    placement_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    placed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    placement_method: Mapped[str | None] = mapped_column(String, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column()

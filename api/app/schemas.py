@@ -871,3 +871,69 @@ class NutritionUpdateIn(BaseModel):
 class WaterAddIn(BaseModel):
     # One glass. Bounded so a stuck client cannot log a bathtub.
     ml: int = Field(default=250, gt=0, le=2000)
+
+
+class TopicStateOut(BaseModel):
+    slug: str
+    name: str
+    phase: int
+    state: str  # LOCKED | AVAILABLE | IN_PROGRESS | MASTERED
+    mastery: float
+    prereqs: list[str] = Field(default_factory=list)
+    #: False when the topic has no knowledge questions yet. Such a topic is
+    #: transparent for unlocking (invariant 7) and reported as a gap.
+    has_content: bool = True
+
+
+class CurriculumStateOut(BaseModel):
+    """The learning frontier."""
+
+    current_topic: str | None = None
+    current_topic_name: str | None = None
+    reached_phase: int = 0
+    placement_status: str = "UNASSESSED"
+    topics: list[TopicStateOut] = Field(default_factory=list)
+
+
+class SelectionExplanationOut(BaseModel):
+    """Why one question was chosen, or why it was not.
+
+    Structured rather than prose so the curriculum can be debugged by
+    query instead of by reading the ranking code.
+    """
+
+    question_id: int
+    selected: bool
+    slot: str | None = None
+    topic: str | None = None
+    phase: int | None = None
+    score: float | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class PlacementProbeOut(BaseModel):
+    question_id: int
+    topic: str
+    phase: int
+    cognitive_level: int
+
+
+class PlacementOut(BaseModel):
+    phase: int
+    confidence: float
+    #: Below the threshold the estimate is shown but not acted on: thin
+    #: evidence should not silently skip foundations.
+    confident: bool
+    method: str
+    #: True when the graph pulled the estimate back -- advanced knowledge
+    #: with a missing prerequisite underneath it.
+    clamped_by_prerequisites: bool = False
+    evidence: dict[str, float] = Field(default_factory=dict)
+    known_topics: list[str] = Field(default_factory=list)
+    status: str = "UNASSESSED"
+
+
+class PlacementApplyIn(BaseModel):
+    #: question_id -> self-rated mastery on the existing 0-7 ladder. Empty
+    #: means "estimate from my history instead".
+    answers: dict[int, int] = Field(default_factory=dict)

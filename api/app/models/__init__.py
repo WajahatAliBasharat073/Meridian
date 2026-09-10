@@ -25,7 +25,13 @@ from app.models.problems import (
     TopicLearningEntry,
     TopicVerificationAttempt,
 )
-from app.models.questions import InterviewModule, Question, QuestionProgress
+from app.models.questions import (
+    CurriculumTopic,
+    InterviewModule,
+    LearnerFrontier,
+    Question,
+    QuestionProgress,
+)
 from app.models.repetition import Mistake, Mock, Review
 from app.models.sessions import FocusSession, FocusSessionEvent
 
@@ -61,6 +67,8 @@ __all__ = [
     "Question",
     "InterviewModule",
     "QuestionProgress",
+    "CurriculumTopic",
+    "LearnerFrontier",
     "Goal",
     "TimeBudget",
     "DailyReflection",
