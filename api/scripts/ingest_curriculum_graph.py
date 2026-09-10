@@ -44,17 +44,19 @@ from app.models.questions import CurriculumTopic, Question
 from scripts.curriculum_graph import (
     FORMAT_BY_QUESTION_TYPE,
     KEYWORD_FIRST_MODULES,
-    OVERRIDE_KEYWORDS,
     KEYWORD_RULES,
     LEVEL_BY_DIFFICULTY,
     LEVEL_FORMAT_FLOOR,
     LEVEL_KEYWORD_RULES,
     MODULE_DEFAULT,
+    OVERRIDE_KEYWORDS,
     PHASES,
+    SPECIFIC_RULES,
     SUBMODULE_MAP,
     TOPIC_BY_SLUG,
     TOPICS,
 )
+from scripts.curriculum_overrides import manual_topic
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -68,18 +70,36 @@ FORMAT_TYPES = {"case_study", "behavioral", "project_deep_dive", "system_design"
 def classify(q: Question) -> tuple[str, str, str]:
     """-> (topic_slug, confidence, matched_rule)
 
-    Submodule label first, because it is the bank's own considered
-    grouping and is right 435 times out of 724. The exception is a module
-    whose submodules are coarse buckets rather than topics (see
-    KEYWORD_FIRST_MODULES): there the title names the algorithm outright
-    and the bucket does not, so the title wins.
+    Precedence, highest first:
+
+    1. adjudicated  - a question read individually and judged by hand
+                      (curriculum_overrides.py). Exists for cases where the
+                      source metadata is simply wrong about its own content.
+    2. override     - a very small, unambiguous keyword set (tokenization,
+                      TF-IDF) that no submodule label should be able to beat.
+    3. specific     - narrow rules that disambiguate a word with two
+                      meanings ("sigmoid", "recall", "filter") or an
+                      ML-coding title that names its algorithm outright.
+                      These exist specifically to outrank a wrong bucket.
+    4. exact        - the submodule label, right 395+ times out of 724 and
+                      trusted by default.
+    5. keyword      - the generic bucket rules, only when nothing else fired.
+    6. module_default - no signal at all; flagged for review.
     """
+    adjudicated = manual_topic(q.title)
+    if adjudicated is not None:
+        return adjudicated[0], "adjudicated", adjudicated[1]
+
     key = (q.module_code or "", q.submodule or "")
     haystack = f"{q.title} {q.tests_for or ''}".lower()
 
     for pattern, slug in OVERRIDE_KEYWORDS:
         if re.search(pattern, haystack):
             return slug, "keyword", f"override:{pattern}"
+
+    for pattern, slug in SPECIFIC_RULES:
+        if re.search(pattern, haystack):
+            return slug, "keyword", f"specific:{pattern}"
 
     keyword_hit: tuple[str, str] | None = None
     for pattern, slug in KEYWORD_RULES:

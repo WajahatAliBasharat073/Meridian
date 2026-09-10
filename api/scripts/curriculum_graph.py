@@ -118,6 +118,9 @@ TOPICS: list[Topic] = [
     Topic("svm", "SVM, Margins & Kernels", 1,
           ("classification_fundamentals", "linear_algebra")),
 
+    Topic("recsys_fundamentals", "Recommendation Fundamentals", 1,
+          ("what_is_ml", "linear_algebra"),
+          note="Collaborative filtering, matrix factorisation, cold start. Split out because 'what is collaborative filtering?' was reachable only behind P5 system design."),
     Topic("clustering", "Clustering & k-Means", 1, ("what_is_ml", "linear_algebra"),
           note="Choosing k, initialisation, evaluating a clustering."),
     Topic("hierarchical_dbscan", "Hierarchical Clustering & DBSCAN", 1, ("clustering",)),
@@ -136,6 +139,10 @@ TOPICS: list[Topic] = [
     Topic("interpretability", "Interpretability", 1, ("model_selection",)),
     Topic("distribution_shift", "Distribution Shift & Robustness", 1, ("error_analysis",)),
     Topic("experimentation", "Experimentation & A/B Testing", 1, ("statistics",)),
+    Topic("time_series", "Time Series", 1, ("regression_metrics", "statistics"),
+          note="Trend, stationarity, classic forecasting models, and why trees "
+          "struggle with extrapolation. Added because 7 questions on this had no "
+          "topic to land on and were falling through to a linear-regression default."),
 
     Topic("neural_networks", "Perceptron, MLP & Neural Network Intuition", 2,
           ("logistic_regression", "gradient_descent")),
@@ -224,7 +231,7 @@ TOPICS: list[Topic] = [
           ("monitoring_drift", "model_selection"),
           note="Requirements, data, architecture, evaluation, scaling, failure modes."),
     Topic("recsys_design", "Recommendation Systems", 5,
-          ("ml_system_design_process", "embeddings")),
+          ("ml_system_design_process", "embeddings", "recsys_fundamentals")),
     Topic("search_ranking_design", "Search & Ranking Systems", 5,
           ("ml_system_design_process", "information_retrieval")),
     Topic("classic_ml_system_design", "Fraud, Forecasting & Classification Systems", 5,
@@ -357,31 +364,57 @@ OVERRIDE_KEYWORDS: list[tuple[str, str]] = [
     (r"\bbag of words\b|\btf.?idf\b", "bow_tfidf"),
 ]
 
-# Ordered keyword rules for the coarse buckets. First match wins, so the
-# more specific patterns come first.
-KEYWORD_RULES: list[tuple[str, str]] = [
-    # --- ML-coding titles, which name their algorithm outright. These sit
-    # first because they are unambiguous and would otherwise be captured by
-    # a broader rule below (a "contrastive loss" is not loss_functions in
-    # the Phase-1 sense).
+# Rules specific enough to outrank a submodule label, checked before it.
+#
+# Every one of these was added after a real misclassification, and in each
+# case the *submodule* was the thing that was wrong: "cold start" filed
+# under ranking-system design, "collaborative filtering" under CNNs,
+# "precision at k" under confusion-matrix metrics, "sigmoid" under
+# logistic regression instead of activation functions. A rule this narrow
+# is better evidence than a bucket name, so it wins.
+SPECIFIC_RULES: list[tuple[str, str]] = [
+    # Domain-disambiguating: a word that means different things in
+    # different subfields, which the generic rules below would otherwise
+    # claim for whichever field they happen to list first.
+    #   "recall"/"precision" - IR@k vs the confusion-matrix metric
+    #   "filter"             - collaborative filtering vs a conv filter
+    #   "sigmoid"            - an activation function vs logistic regression
+    #   "momentum"/"adam"    - a DL optimiser, not classical gradient descent
+    (r"\bcollaborative filtering\b|\bmatrix factori[sz]|\bcold start\b|\bimplicit feedback\b",
+     "recsys_fundamentals"),
+    (r"\b(precision|recall|ndcg|map|mrr)\s*@\s*k\b|\bat k\b|\bmean average precision\b",
+     "information_retrieval"),
+    (r"\bhnsw\b|\bivf\b|\bfaiss\b|\bann index\b|\bvector (database|index)\b", "vector_search"),
+    (r"\brelu\b|\bgelu\b|\bleaky.?relu\b|\bsoftplus\b|\btanh\b|\bsigmoid\b|\bactivation function",
+     "activations"),
+    (r"\badam\b|\brmsprop\b|\badagrad\b|\bmomentum\b|\blr schedul|\blearning.?rate schedul",
+     "dl_optimization"),
+
+    # ML-coding titles name their algorithm outright, so they are specific
+    # in the same sense: "Implement: TF-IDF" is not an attention question
+    # whatever coarse bucket its submodule label happens to file it in.
     (r"\bkv cache\b|\bpaged attention\b", "llm_inference"),
     (r"\btemperature\b.*\btop.?[kp]\b|\btop.?[kp]\b.*sampling|\bnucleus sampling\b",
      "llm_inference"),
     (r"\blora\b|\bqlora\b|\badapter\b", "pretraining_finetuning"),
-    (r"\bdirect preference optimization\b|\bdpo\b|\bppo\b|\brlhf\b",
-     "instruction_tuning"),
+    (r"\bdirect preference optimization\b|\bdpo\b|\bppo\b|\brlhf\b", "instruction_tuning"),
     (r"\bcontrastive loss\b|\bclip\b|\bsiamese\b", "embeddings"),
     (r"\bcosine top.?k\b|\btop.?k retrieval\b|\bvector recall\b", "vector_search"),
     (r"\bbyte.?pair\b|\bbpe\b|\bwordpiece\b|\bsentencepiece\b", "text_preprocessing"),
-    (r"\bcausal (attention )?mask\b|\battention mask\b|\bscaled dot.?product\b",
-     "attention"),
-    (r"\bconversation memory\b|\bsliding.?window .*memory\b|\bscratchpad\b",
-     "agent_loop"),
+    (r"\bcausal (attention )?mask\b|\battention mask\b|\bscaled dot.?product\b", "attention"),
+    (r"\bconversation memory\b|\bsliding.?window .*memory\b|\bscratchpad\b", "agent_loop"),
+]
+
+# Generic bucket rules, consulted only when SUBMODULE_MAP has nothing.
+# Deliberately broad, and deliberately subordinate: "classification"
+# appears in questions that are not about classification metrics, which is
+# exactly why the disambiguating rules above must run first.
+KEYWORD_RULES: list[tuple[str, str]] = [
     # regression, splitting module D's 62 "Regression" questions
     (r"\b(ridge|lasso|elastic ?net|l1|l2 regulari)", "ridge_lasso"),
     (r"\b(multicollinear|heteroscedastic|homoscedastic|residual|assumption)", "regression_assumptions"),
     (r"\b(r squared|r-squared|rmse|\bmae\b|\bmse\b|adjusted r)", "regression_metrics"),
-    (r"\b(logistic regression|sigmoid|log.?odds|logit)", "logistic_regression"),
+    (r"\blogistic regression\b|\blog.?odds\b|\blogit\b", "logistic_regression"),
     (r"\blinear regression|ordinary least squares|\bols\b|normal equation", "linear_regression"),
     # classification
     (r"\b(precision|recall|f1|confusion matrix)", "classification_metrics"),
@@ -403,7 +436,7 @@ KEYWORD_RULES: list[tuple[str, str]] = [
     (r"\boverfit|underfit|bias.{0,10}variance", "bias_variance"),
     (r"\bcross.?validat|k-?fold", "cross_validation"),
     (r"\bleakage", "data_leakage"),
-    (r"\bgradient descent|learning rate|\bsgd\b|momentum|adam\b", "gradient_descent"),
+    (r"\bgradient descent\b|\blearning rate\b|\bsgd\b", "gradient_descent"),
     (r"\bloss function|cost function|cross.?entropy|objective function", "loss_functions"),
     (r"\bfeature engineer|feature scal|normali[sz]ation of features", "feature_engineering"),
     (r"\bfeature select", "feature_selection"),
@@ -419,7 +452,7 @@ KEYWORD_RULES: list[tuple[str, str]] = [
     (r"\bactivation|relu|gelu|tanh\b|softmax", "activations"),
     (r"\bdropout|batch ?norm|layer ?norm", "dl_regularization"),
     (r"\bvanishing|exploding gradient|gradient clip", "training_stability"),
-    (r"\b(cnn|convolution|pooling|filter)", "cnn"),
+    (r"\bcnn\b|\bconvolution|\bpooling\b|\bfeature map\b|\bkernel size\b", "cnn"),
     (r"\b(rnn|lstm|gru|recurrent)", "rnn"),
     (r"\bseq2seq|sequence.to.sequence|encoder.decoder", "seq2seq"),
     (r"\bself.?attention|attention mechanism|multi.?head", "attention"),
