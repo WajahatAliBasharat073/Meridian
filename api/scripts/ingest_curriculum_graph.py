@@ -43,6 +43,8 @@ from app.db import SessionLocal
 from app.models.questions import CurriculumTopic, Question
 from scripts.curriculum_graph import (
     FORMAT_BY_QUESTION_TYPE,
+    KEYWORD_FIRST_MODULES,
+    OVERRIDE_KEYWORDS,
     KEYWORD_RULES,
     LEVEL_BY_DIFFICULTY,
     LEVEL_FORMAT_FLOOR,
@@ -64,15 +66,35 @@ FORMAT_TYPES = {"case_study", "behavioral", "project_deep_dive", "system_design"
 
 
 def classify(q: Question) -> tuple[str, str, str]:
-    """-> (topic_slug, confidence, matched_rule)"""
+    """-> (topic_slug, confidence, matched_rule)
+
+    Submodule label first, because it is the bank's own considered
+    grouping and is right 435 times out of 724. The exception is a module
+    whose submodules are coarse buckets rather than topics (see
+    KEYWORD_FIRST_MODULES): there the title names the algorithm outright
+    and the bucket does not, so the title wins.
+    """
     key = (q.module_code or "", q.submodule or "")
+    haystack = f"{q.title} {q.tests_for or ''}".lower()
+
+    for pattern, slug in OVERRIDE_KEYWORDS:
+        if re.search(pattern, haystack):
+            return slug, "keyword", f"override:{pattern}"
+
+    keyword_hit: tuple[str, str] | None = None
+    for pattern, slug in KEYWORD_RULES:
+        if re.search(pattern, haystack):
+            keyword_hit = (slug, pattern)
+            break
+
+    if (q.module_code or "") in KEYWORD_FIRST_MODULES and keyword_hit:
+        return keyword_hit[0], "keyword", keyword_hit[1]
+
     if key in SUBMODULE_MAP:
         return SUBMODULE_MAP[key], "exact", f"submodule:{q.submodule}"
 
-    haystack = f"{q.title} {q.tests_for or ''}".lower()
-    for pattern, slug in KEYWORD_RULES:
-        if re.search(pattern, haystack):
-            return slug, "keyword", pattern
+    if keyword_hit:
+        return keyword_hit[0], "keyword", keyword_hit[1]
 
     return MODULE_DEFAULT.get(q.module_code or "", "what_is_ml"), "module_default", "fallback"
 

@@ -339,9 +339,44 @@ SUBMODULE_MAP: dict[tuple[str, str], str] = {
     ("B", "Agentic control-plane coding"): "agent_loop",
 }
 
+# Modules whose submodule labels are coarse buckets rather than topics, so
+# a title keyword is the better signal. Module B ("ML coding") groups 43
+# questions into four buckets -- "Language-model mechanics" alone covers
+# TF-IDF, byte-pair encoding, attention masks, sampling and the KV cache --
+# while every title states exactly what it implements. Trusting the
+# submodule there filed TF-IDF under attention.
+KEYWORD_FIRST_MODULES: frozenset[str] = frozenset({"B"})
+
+# Markers so unambiguous that no submodule label should outrank them. The
+# bank contains a tokenization question filed under "Q/K/V & scaled
+# dot-product"; the label is simply wrong, and trusting it put tokenizers
+# in Deep Learning. Keep this list short -- it exists for clear source
+# errors, not for tuning.
+OVERRIDE_KEYWORDS: list[tuple[str, str]] = [
+    (r"\btokeniz|\btokenis|\bwordpiece\b|\bbyte.?pair\b|\bbpe\b", "text_preprocessing"),
+    (r"\bbag of words\b|\btf.?idf\b", "bow_tfidf"),
+]
+
 # Ordered keyword rules for the coarse buckets. First match wins, so the
 # more specific patterns come first.
 KEYWORD_RULES: list[tuple[str, str]] = [
+    # --- ML-coding titles, which name their algorithm outright. These sit
+    # first because they are unambiguous and would otherwise be captured by
+    # a broader rule below (a "contrastive loss" is not loss_functions in
+    # the Phase-1 sense).
+    (r"\bkv cache\b|\bpaged attention\b", "llm_inference"),
+    (r"\btemperature\b.*\btop.?[kp]\b|\btop.?[kp]\b.*sampling|\bnucleus sampling\b",
+     "llm_inference"),
+    (r"\blora\b|\bqlora\b|\badapter\b", "pretraining_finetuning"),
+    (r"\bdirect preference optimization\b|\bdpo\b|\bppo\b|\brlhf\b",
+     "instruction_tuning"),
+    (r"\bcontrastive loss\b|\bclip\b|\bsiamese\b", "embeddings"),
+    (r"\bcosine top.?k\b|\btop.?k retrieval\b|\bvector recall\b", "vector_search"),
+    (r"\bbyte.?pair\b|\bbpe\b|\bwordpiece\b|\bsentencepiece\b", "text_preprocessing"),
+    (r"\bcausal (attention )?mask\b|\battention mask\b|\bscaled dot.?product\b",
+     "attention"),
+    (r"\bconversation memory\b|\bsliding.?window .*memory\b|\bscratchpad\b",
+     "agent_loop"),
     # regression, splitting module D's 62 "Regression" questions
     (r"\b(ridge|lasso|elastic ?net|l1|l2 regulari)", "ridge_lasso"),
     (r"\b(multicollinear|heteroscedastic|homoscedastic|residual|assumption)", "regression_assumptions"),
