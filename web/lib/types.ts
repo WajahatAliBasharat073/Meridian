@@ -510,6 +510,10 @@ export interface GoalOut {
   progress_pct: number;
   status: GoalStatus;
   minutes_logged: number | null;
+  //: Set only when linked to a money goal -- its progress is always
+  //: computed from real transactions, never the manual slider above.
+  finance_goal_id: number | null;
+  linked_finance_goal: FinanceGoalOut | null;
 }
 
 export interface GoalCreateInput {
@@ -517,11 +521,14 @@ export interface GoalCreateInput {
   description?: string;
   category?: string;
   target_date?: string;
+  finance_goal_id?: number;
 }
 
 export interface GoalUpdateInput {
   progress_pct?: number;
   status?: GoalStatus;
+  //: 0 clears an existing link; omit for "no change"; any other id links it.
+  finance_goal_id?: number;
 }
 
 export interface TimeBudgetOut {
@@ -655,6 +662,24 @@ export interface ReadingSessionCreateInput {
   note?: string;
 }
 
+export type ReadingPriority = "high" | "medium" | "low";
+
+export const READING_PRIORITY_LABELS: Record<ReadingPriority, string> = {
+  high: "High priority",
+  medium: "Medium priority",
+  low: "Low priority",
+};
+
+export interface ReadingQuoteOut {
+  text: string;
+  page: number | null;
+}
+
+export interface ReadingQuoteCreateInput {
+  text: string;
+  page?: number;
+}
+
 export interface ReadingBookOut {
   id: number;
   title: string;
@@ -668,6 +693,11 @@ export interface ReadingBookOut {
   started_date: string | null;
   finished_date: string | null;
   notes: string | null;
+  priority: ReadingPriority | null;
+  tags: string[];
+  quotes: ReadingQuoteOut[];
+  why_reading: string | null;
+  revisit_date: string | null;
   current_page: number | null;
   progress_pct: number | null;
   session_count: number;
@@ -685,6 +715,9 @@ export interface ReadingBookCreateInput {
   category?: ReadingCategory;
   status?: ReadingStatus;
   started_date?: string;
+  priority?: ReadingPriority;
+  tags?: string[];
+  why_reading?: string;
 }
 
 export interface ReadingBookUpdateInput {
@@ -698,6 +731,30 @@ export interface ReadingBookUpdateInput {
   rating?: number;
   started_date?: string;
   finished_date?: string;
+  //: null explicitly clears priority/revisit_date; omit either for "no change".
+  priority?: ReadingPriority | null;
+  tags?: string[];
+  why_reading?: string;
+  revisit_date?: string | null;
+}
+
+export interface ReadingBookFilters {
+  statusFilter?: ReadingStatus;
+  category?: ReadingCategory;
+  tag?: string;
+  search?: string;
+  needsRevisit?: boolean;
+}
+
+export interface ReadingStatsOut {
+  completed_count: number;
+  reading_count: number;
+  to_read_count: number;
+  completed_this_month: number;
+  completed_this_year: number;
+  pages_read_this_month: number;
+  streak_days: number;
+  top_categories: [string, number][];
 }
 
 export interface GroqModelOut {
@@ -789,4 +846,474 @@ export interface NutritionUpdateInput {
   water_ml?: number;
   calories?: number;
   protein_g?: number;
+}
+
+// ------------------------------------------------------------- Finance
+
+export type AccountType =
+  | "cash"
+  | "bank"
+  | "savings"
+  | "investment"
+  | "receivable"
+  | "credit"
+  | "loan"
+  | "other";
+export type TransactionType = "income" | "expense";
+export type TransactionStatus = "actual" | "planned";
+export type RecurringInterval = "weekly" | "monthly" | "yearly";
+export type FinanceGoalCategory = "emergency_fund" | "short_term" | "long_term" | "custom";
+export type FinanceGoalStatus = "active" | "completed" | "abandoned";
+
+export interface FinanceAccountOut {
+  id: number;
+  name: string;
+  account_type: AccountType;
+  currency: string;
+  opening_balance: number;
+  current_balance: number;
+  is_liability: boolean;
+  is_active: boolean;
+}
+
+export interface FinanceAccountCreateInput {
+  name: string;
+  account_type: AccountType;
+  currency?: string;
+  opening_balance?: number;
+}
+
+export interface FinanceAccountUpdateInput {
+  name?: string;
+  is_active?: boolean;
+}
+
+export interface FinanceCategoryOut {
+  id: number;
+  name: string;
+  kind: TransactionType;
+  parent_id: number | null;
+  is_system: boolean;
+}
+
+export interface FinanceCategoryCreateInput {
+  name: string;
+  kind: TransactionType;
+  parent_id?: number;
+}
+
+export interface FinanceTransactionOut {
+  id: number;
+  account_id: number;
+  category_id: number;
+  type: TransactionType;
+  amount: number;
+  currency: string;
+  occurred_on: string;
+  status: TransactionStatus;
+  description: string | null;
+  notes: string | null;
+  goal_id: number | null;
+}
+
+export interface FinanceTransactionCreateInput {
+  account_id: number;
+  category_id: number;
+  type: TransactionType;
+  amount: number;
+  currency?: string;
+  occurred_on: string;
+  status?: TransactionStatus;
+  description?: string;
+  notes?: string;
+  goal_id?: number;
+}
+
+export interface FinanceRecurringOut {
+  id: number;
+  description: string;
+  account_id: number;
+  category_id: number;
+  type: TransactionType;
+  amount: number;
+  currency: string;
+  interval: RecurringInterval;
+  anchor_day: number;
+  next_due_date: string;
+  active: boolean;
+}
+
+export interface FinanceRecurringCreateInput {
+  description: string;
+  account_id: number;
+  category_id: number;
+  type: TransactionType;
+  amount: number;
+  currency?: string;
+  interval: RecurringInterval;
+  anchor_day: number;
+  next_due_date: string;
+}
+
+export interface FinanceBudgetOut {
+  id: number;
+  category_id: number;
+  category_name: string;
+  planned: number;
+  actual: number;
+  remaining: number;
+  utilization_pct: number;
+  over_budget: boolean;
+}
+
+export interface FinanceBudgetUpsertInput {
+  category_id: number;
+  monthly_amount: number;
+}
+
+export interface FinanceGoalOut {
+  id: number;
+  title: string;
+  target_amount: number;
+  current_amount: number;
+  remaining: number;
+  progress_pct: number;
+  required_monthly_contribution: number | null;
+  currency: string;
+  target_date: string | null;
+  category: FinanceGoalCategory;
+  status: FinanceGoalStatus;
+  notes: string | null;
+}
+
+export interface FinanceGoalCreateInput {
+  title: string;
+  target_amount: number;
+  currency?: string;
+  target_date?: string;
+  category?: FinanceGoalCategory;
+  notes?: string;
+}
+
+export interface FinanceGoalUpdateInput {
+  status?: FinanceGoalStatus;
+}
+
+export interface FinanceNetWorthPointOut {
+  snapshot_date: string;
+  total_assets: number;
+  total_liabilities: number;
+  net_worth: number;
+}
+
+export interface FinanceCategorySpend {
+  category_name: string;
+  amount: number;
+}
+
+export interface FinanceCategoryOutlier {
+  category_name: string;
+  this_month: number;
+  trailing_avg: number;
+  pct_diff: number;
+}
+
+export interface FinanceDashboardOut {
+  month: string;
+  income: number;
+  expenses: number;
+  savings: number;
+  savings_rate_pct: number | null;
+  income_change_pct: number | null;
+  category_breakdown: FinanceCategorySpend[];
+  outliers: FinanceCategoryOutlier[];
+  budgets: FinanceBudgetOut[];
+  goals: FinanceGoalOut[];
+  upcoming_commitments: FinanceRecurringOut[];
+  upcoming_total: number;
+  net_worth: FinanceNetWorthPointOut | null;
+  net_worth_trend: FinanceNetWorthPointOut[];
+  insights: string[];
+}
+
+// ------------------------------------------------------------- Vocabulary
+
+export type VocabLearningStatus = "known" | "learning" | "difficult" | "need_to_revisit";
+
+export const VOCAB_STATUS_LABELS: Record<VocabLearningStatus, string> = {
+  known: "Known",
+  learning: "Learning",
+  difficult: "Difficult",
+  need_to_revisit: "Need to revisit",
+};
+
+export type VocabCefrLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
+
+export interface VocabWordOut {
+  id: number;
+  word: string;
+  definition: string | null;
+  example_sentence: string | null;
+  pronunciation: string | null;
+  part_of_speech: string | null;
+  category: string | null;
+  cefr_level: VocabCefrLevel | null;
+  synonyms: string | null;
+  antonyms: string | null;
+  word_patterns: string | null;
+  paraphrase: string | null;
+  dictionary_link: string | null;
+  notes: string | null;
+  date_introduced: string;
+  learning_status: VocabLearningStatus | null;
+  source: string;
+}
+
+export interface VocabWordCreateInput {
+  word: string;
+  definition?: string;
+  example_sentence?: string;
+  pronunciation?: string;
+  part_of_speech?: string;
+  category?: string;
+  cefr_level?: VocabCefrLevel;
+  synonyms?: string;
+  antonyms?: string;
+  word_patterns?: string;
+  paraphrase?: string;
+  dictionary_link?: string;
+  notes?: string;
+}
+
+export interface VocabWordUpdateInput {
+  definition?: string | null;
+  example_sentence?: string | null;
+  pronunciation?: string | null;
+  part_of_speech?: string | null;
+  category?: string | null;
+  cefr_level?: VocabCefrLevel | null;
+  synonyms?: string | null;
+  antonyms?: string | null;
+  word_patterns?: string | null;
+  paraphrase?: string | null;
+  dictionary_link?: string | null;
+  notes?: string | null;
+}
+
+export interface VocabStatusUpdateInput {
+  learning_status: VocabLearningStatus | null;
+}
+
+export interface VocabSummaryOut {
+  total_words: number;
+  attempted_count: number;
+  not_attempted_count: number;
+  known_count: number;
+  learning_count: number;
+  difficult_count: number;
+  need_to_revisit_count: number;
+  by_level: [string, number][];
+}
+
+// ------------------------------------------------------- Personal OS overview
+
+export interface OverviewOut {
+  readiness_pct: number | null;
+  reviews_due_today: number;
+  reviews_overdue: number;
+  active_goal_count: number;
+  finance_income_this_month: number | null;
+  finance_expenses_this_month: number | null;
+  finance_savings_this_month: number | null;
+  research_minutes_this_week: number;
+  highlights: string[];
+}
+
+// --------------------------------------------------- Research command center
+
+export type ResearchTopicStatus = "active" | "paused" | "completed" | "abandoned";
+export type ResearchPaperStatus = "to_read" | "reading" | "read";
+export type ResearchNoteKind = "idea" | "question" | "hypothesis" | "methodology" | "note";
+export type ResearchExperimentStatus = "planned" | "running" | "completed" | "abandoned";
+export type ResearchMilestoneStatus = "pending" | "in_progress" | "completed" | "missed";
+export type ResearchVenueType = "conference" | "journal" | "workshop";
+export type ResearchRelevance = "high" | "medium" | "low";
+export type ResearchOpportunityStatus =
+  | "interested"
+  | "shortlisted"
+  | "preparing"
+  | "submitted"
+  | "accepted"
+  | "rejected"
+  | "not_relevant";
+
+export const RESEARCH_NOTE_KIND_LABELS: Record<ResearchNoteKind, string> = {
+  idea: "Idea",
+  question: "Question",
+  hypothesis: "Hypothesis",
+  methodology: "Methodology",
+  note: "Note",
+};
+
+export const RESEARCH_OPPORTUNITY_STATUS_LABELS: Record<ResearchOpportunityStatus, string> = {
+  interested: "Interested",
+  shortlisted: "Shortlisted",
+  preparing: "Preparing",
+  submitted: "Submitted",
+  accepted: "Accepted",
+  rejected: "Rejected",
+  not_relevant: "Not relevant",
+};
+
+export interface ResearchTopicOut {
+  id: number;
+  title: string;
+  description: string | null;
+  status: ResearchTopicStatus;
+  current_blocker: string | null;
+}
+
+export interface ResearchTopicCreateInput {
+  title: string;
+  description?: string;
+}
+
+export interface ResearchTopicUpdateInput {
+  title?: string;
+  description?: string;
+  status?: ResearchTopicStatus;
+  current_blocker?: string | null;
+}
+
+export interface ResearchPaperOut {
+  id: number;
+  topic_id: number | null;
+  title: string;
+  authors: string | null;
+  year: number | null;
+  venue: string | null;
+  url: string | null;
+  status: ResearchPaperStatus;
+  summary: string | null;
+  relevance_note: string | null;
+}
+
+export interface ResearchPaperCreateInput {
+  topic_id?: number;
+  title: string;
+  authors?: string;
+  year?: number;
+  venue?: string;
+  url?: string;
+  status?: ResearchPaperStatus;
+  summary?: string;
+  relevance_note?: string;
+}
+
+export interface ResearchPaperUpdateInput {
+  status?: ResearchPaperStatus;
+  summary?: string;
+  relevance_note?: string;
+}
+
+export interface ResearchNoteOut {
+  id: number;
+  topic_id: number | null;
+  paper_id: number | null;
+  kind: ResearchNoteKind;
+  content: string;
+}
+
+export interface ResearchNoteCreateInput {
+  topic_id?: number;
+  paper_id?: number;
+  kind?: ResearchNoteKind;
+  content: string;
+}
+
+export interface ResearchExperimentOut {
+  id: number;
+  topic_id: number | null;
+  title: string;
+  description: string | null;
+  dataset: string | null;
+  methodology_note: string | null;
+  status: ResearchExperimentStatus;
+  result_summary: string | null;
+  started_date: string | null;
+  completed_date: string | null;
+}
+
+export interface ResearchExperimentCreateInput {
+  topic_id?: number;
+  title: string;
+  description?: string;
+  dataset?: string;
+  status?: ResearchExperimentStatus;
+}
+
+export interface ResearchExperimentUpdateInput {
+  status?: ResearchExperimentStatus;
+  result_summary?: string;
+  completed_date?: string;
+}
+
+export interface ResearchMilestoneOut {
+  id: number;
+  topic_id: number | null;
+  title: string;
+  description: string | null;
+  target_date: string | null;
+  status: ResearchMilestoneStatus;
+}
+
+export interface ResearchMilestoneCreateInput {
+  topic_id?: number;
+  title: string;
+  target_date?: string;
+}
+
+export interface ResearchMilestoneUpdateInput {
+  status?: ResearchMilestoneStatus;
+}
+
+export interface ResearchOpportunityOut {
+  id: number;
+  venue_name: string;
+  venue_type: ResearchVenueType;
+  research_area: string | null;
+  submission_deadline: string | null;
+  notification_date: string | null;
+  event_date: string | null;
+  location: string | null;
+  links: string[];
+  submission_type: string | null;
+  relevance: ResearchRelevance | null;
+  priority: ResearchRelevance | null;
+  status: ResearchOpportunityStatus;
+  notes: string | null;
+}
+
+export interface ResearchOpportunityCreateInput {
+  venue_name: string;
+  venue_type: ResearchVenueType;
+  research_area?: string;
+  submission_deadline?: string;
+  relevance?: ResearchRelevance;
+  priority?: ResearchRelevance;
+  notes?: string;
+}
+
+export interface ResearchOpportunityUpdateInput {
+  status?: ResearchOpportunityStatus;
+  priority?: ResearchRelevance;
+  notes?: string;
+}
+
+export interface ResearchAtAGlanceOut {
+  active_topic: ResearchTopicOut | null;
+  papers_to_read_count: number;
+  next_milestone: ResearchMilestoneOut | null;
+  next_opportunity: ResearchOpportunityOut | null;
+  highlights: string[];
 }

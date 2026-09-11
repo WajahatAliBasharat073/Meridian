@@ -47,11 +47,56 @@ import type {
   ReadingBookOut,
   ReadingBookCreateInput,
   ReadingBookUpdateInput,
+  ReadingBookFilters,
+  ReadingStatsOut,
+  ReadingQuoteCreateInput,
   ReadingSessionOut,
   ReadingSessionCreateInput,
   VitalsOut,
   RecoveryUpdateInput,
   NutritionUpdateInput,
+  FinanceAccountOut,
+  FinanceAccountCreateInput,
+  FinanceAccountUpdateInput,
+  FinanceCategoryOut,
+  FinanceCategoryCreateInput,
+  FinanceTransactionOut,
+  FinanceTransactionCreateInput,
+  FinanceRecurringOut,
+  FinanceRecurringCreateInput,
+  FinanceBudgetOut,
+  FinanceBudgetUpsertInput,
+  FinanceGoalOut,
+  FinanceGoalCreateInput,
+  FinanceGoalUpdateInput,
+  FinanceNetWorthPointOut,
+  FinanceDashboardOut,
+  TransactionType,
+  TransactionStatus,
+  VocabWordOut,
+  VocabWordCreateInput,
+  VocabWordUpdateInput,
+  VocabStatusUpdateInput,
+  VocabSummaryOut,
+  OverviewOut,
+  ResearchAtAGlanceOut,
+  ResearchTopicOut,
+  ResearchTopicCreateInput,
+  ResearchTopicUpdateInput,
+  ResearchPaperOut,
+  ResearchPaperCreateInput,
+  ResearchPaperUpdateInput,
+  ResearchNoteOut,
+  ResearchNoteCreateInput,
+  ResearchExperimentOut,
+  ResearchExperimentCreateInput,
+  ResearchExperimentUpdateInput,
+  ResearchMilestoneOut,
+  ResearchMilestoneCreateInput,
+  ResearchMilestoneUpdateInput,
+  ResearchOpportunityOut,
+  ResearchOpportunityCreateInput,
+  ResearchOpportunityUpdateInput,
 } from "./types";
 
 /** Carries the HTTP status (0 = the request never reached a server at
@@ -382,8 +427,19 @@ export function createThesisLog(input: ThesisLogCreateInput): Promise<ThesisLogO
   return request<ThesisLogOut>("/api/thesis-log", { method: "POST", body: JSON.stringify(input) });
 }
 
-export function getReadingBooks(): Promise<ReadingBookOut[]> {
-  return request<ReadingBookOut[]>("/api/reading/books", { cache: "no-store" });
+export function getReadingBooks(filters: ReadingBookFilters = {}): Promise<ReadingBookOut[]> {
+  const params = new URLSearchParams();
+  if (filters.statusFilter) params.set("status_filter", filters.statusFilter);
+  if (filters.category) params.set("category", filters.category);
+  if (filters.tag) params.set("tag", filters.tag);
+  if (filters.search) params.set("search", filters.search);
+  if (filters.needsRevisit) params.set("needs_revisit", "true");
+  const qs = params.toString();
+  return request<ReadingBookOut[]>(`/api/reading/books${qs ? `?${qs}` : ""}`, { cache: "no-store" });
+}
+
+export function getReadingStats(): Promise<ReadingStatsOut> {
+  return request<ReadingStatsOut>("/api/reading/stats", { cache: "no-store" });
 }
 
 export function createReadingBook(input: ReadingBookCreateInput): Promise<ReadingBookOut> {
@@ -392,6 +448,23 @@ export function createReadingBook(input: ReadingBookCreateInput): Promise<Readin
 
 export function updateReadingBook(bookId: number, input: ReadingBookUpdateInput): Promise<ReadingBookOut> {
   return request<ReadingBookOut>(`/api/reading/books/${bookId}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export function deleteReadingBook(bookId: number): Promise<void> {
+  return request<void>(`/api/reading/books/${bookId}`, { method: "DELETE" });
+}
+
+export function addReadingQuote(bookId: number, input: ReadingQuoteCreateInput): Promise<ReadingBookOut> {
+  return request<ReadingBookOut>(`/api/reading/books/${bookId}/quotes`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteReadingQuote(bookId: number, quoteIndex: number): Promise<ReadingBookOut> {
+  return request<ReadingBookOut>(`/api/reading/books/${bookId}/quotes/${quoteIndex}`, {
+    method: "DELETE",
+  });
 }
 
 export function getReadingSessions(bookId: number): Promise<ReadingSessionOut[]> {
@@ -480,4 +553,332 @@ export function addWater(ml = 250): Promise<VitalsOut> {
     method: "POST",
     body: JSON.stringify({ ml }),
   });
+}
+
+// ------------------------------------------------------------- Finance
+
+export function getFinanceAccounts(): Promise<FinanceAccountOut[]> {
+  return request<FinanceAccountOut[]>("/api/finance/accounts", { cache: "no-store" });
+}
+
+export function createFinanceAccount(input: FinanceAccountCreateInput): Promise<FinanceAccountOut> {
+  return request<FinanceAccountOut>("/api/finance/accounts", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateFinanceAccount(
+  accountId: number,
+  input: FinanceAccountUpdateInput
+): Promise<FinanceAccountOut> {
+  return request<FinanceAccountOut>(`/api/finance/accounts/${accountId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteFinanceAccount(accountId: number): Promise<void> {
+  return request<void>(`/api/finance/accounts/${accountId}`, { method: "DELETE" });
+}
+
+export function getFinanceCategories(): Promise<FinanceCategoryOut[]> {
+  return request<FinanceCategoryOut[]>("/api/finance/categories", { cache: "no-store" });
+}
+
+export function createFinanceCategory(input: FinanceCategoryCreateInput): Promise<FinanceCategoryOut> {
+  return request<FinanceCategoryOut>("/api/finance/categories", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export interface FinanceTransactionFilters {
+  accountId?: number;
+  categoryId?: number;
+  type?: TransactionType;
+  status?: TransactionStatus;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export function getFinanceTransactions(
+  filters: FinanceTransactionFilters = {}
+): Promise<FinanceTransactionOut[]> {
+  const params = new URLSearchParams();
+  if (filters.accountId != null) params.set("account_id", String(filters.accountId));
+  if (filters.categoryId != null) params.set("category_id", String(filters.categoryId));
+  if (filters.type) params.set("type", filters.type);
+  if (filters.status) params.set("status_", filters.status);
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+  const qs = params.toString();
+  return request<FinanceTransactionOut[]>(`/api/finance/transactions${qs ? `?${qs}` : ""}`, {
+    cache: "no-store",
+  });
+}
+
+export function createFinanceTransaction(
+  input: FinanceTransactionCreateInput
+): Promise<FinanceTransactionOut> {
+  return request<FinanceTransactionOut>("/api/finance/transactions", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteFinanceTransaction(transactionId: number): Promise<void> {
+  return request<void>(`/api/finance/transactions/${transactionId}`, { method: "DELETE" });
+}
+
+export function getFinanceRecurring(): Promise<FinanceRecurringOut[]> {
+  return request<FinanceRecurringOut[]>("/api/finance/recurring", { cache: "no-store" });
+}
+
+export function createFinanceRecurring(input: FinanceRecurringCreateInput): Promise<FinanceRecurringOut> {
+  return request<FinanceRecurringOut>("/api/finance/recurring", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteFinanceRecurring(recurringId: number): Promise<void> {
+  return request<void>(`/api/finance/recurring/${recurringId}`, { method: "DELETE" });
+}
+
+export function getFinanceBudgets(): Promise<FinanceBudgetOut[]> {
+  return request<FinanceBudgetOut[]>("/api/finance/budgets", { cache: "no-store" });
+}
+
+export function upsertFinanceBudget(input: FinanceBudgetUpsertInput): Promise<FinanceBudgetOut> {
+  return request<FinanceBudgetOut>("/api/finance/budgets", { method: "PUT", body: JSON.stringify(input) });
+}
+
+export function deleteFinanceBudget(budgetId: number): Promise<void> {
+  return request<void>(`/api/finance/budgets/${budgetId}`, { method: "DELETE" });
+}
+
+export function getFinanceGoals(): Promise<FinanceGoalOut[]> {
+  return request<FinanceGoalOut[]>("/api/finance/goals", { cache: "no-store" });
+}
+
+export function createFinanceGoal(input: FinanceGoalCreateInput): Promise<FinanceGoalOut> {
+  return request<FinanceGoalOut>("/api/finance/goals", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateFinanceGoal(goalId: number, input: FinanceGoalUpdateInput): Promise<FinanceGoalOut> {
+  return request<FinanceGoalOut>(`/api/finance/goals/${goalId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteFinanceGoal(goalId: number): Promise<void> {
+  return request<void>(`/api/finance/goals/${goalId}`, { method: "DELETE" });
+}
+
+export function getFinanceDashboard(): Promise<FinanceDashboardOut> {
+  return request<FinanceDashboardOut>("/api/finance/dashboard", { cache: "no-store" });
+}
+
+export function takeFinanceNetWorthSnapshot(): Promise<FinanceNetWorthPointOut> {
+  return request<FinanceNetWorthPointOut>("/api/finance/dashboard/snapshot", { method: "POST" });
+}
+
+// ------------------------------------------------------------- Vocabulary
+
+export function getVocabWords(learningStatus?: string): Promise<VocabWordOut[]> {
+  const qs = learningStatus ? `?learning_status=${encodeURIComponent(learningStatus)}` : "";
+  return request<VocabWordOut[]>(`/api/vocab${qs}`, { cache: "no-store" });
+}
+
+export function getDailyVocabReview(count = 10): Promise<VocabWordOut[]> {
+  return request<VocabWordOut[]>(`/api/vocab/daily?count=${count}`, { cache: "no-store" });
+}
+
+export function createVocabWord(input: VocabWordCreateInput): Promise<VocabWordOut> {
+  return request<VocabWordOut>("/api/vocab", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function setVocabWordStatus(
+  wordId: number,
+  input: VocabStatusUpdateInput
+): Promise<VocabWordOut> {
+  return request<VocabWordOut>(`/api/vocab/${wordId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteVocabWord(wordId: number): Promise<void> {
+  return request<void>(`/api/vocab/${wordId}`, { method: "DELETE" });
+}
+
+export function updateVocabWord(wordId: number, input: VocabWordUpdateInput): Promise<VocabWordOut> {
+  return request<VocabWordOut>(`/api/vocab/${wordId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getVocabSummary(): Promise<VocabSummaryOut> {
+  return request<VocabSummaryOut>("/api/vocab/summary", { cache: "no-store" });
+}
+
+// --------------------------------------------------- Personal OS overview
+
+export function getOverview(): Promise<OverviewOut> {
+  return request<OverviewOut>("/api/overview", { cache: "no-store" });
+}
+
+// --------------------------------------------- Research command center
+
+export function getResearchAtAGlance(): Promise<ResearchAtAGlanceOut> {
+  return request<ResearchAtAGlanceOut>("/api/research/at-a-glance", { cache: "no-store" });
+}
+
+export function getResearchTopics(): Promise<ResearchTopicOut[]> {
+  return request<ResearchTopicOut[]>("/api/research/topics", { cache: "no-store" });
+}
+
+export function createResearchTopic(input: ResearchTopicCreateInput): Promise<ResearchTopicOut> {
+  return request<ResearchTopicOut>("/api/research/topics", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateResearchTopic(
+  topicId: number,
+  input: ResearchTopicUpdateInput
+): Promise<ResearchTopicOut> {
+  return request<ResearchTopicOut>(`/api/research/topics/${topicId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteResearchTopic(topicId: number): Promise<void> {
+  return request<void>(`/api/research/topics/${topicId}`, { method: "DELETE" });
+}
+
+export function getResearchPapers(topicId?: number): Promise<ResearchPaperOut[]> {
+  const qs = topicId != null ? `?topic_id=${topicId}` : "";
+  return request<ResearchPaperOut[]>(`/api/research/papers${qs}`, { cache: "no-store" });
+}
+
+export function createResearchPaper(input: ResearchPaperCreateInput): Promise<ResearchPaperOut> {
+  return request<ResearchPaperOut>("/api/research/papers", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateResearchPaper(
+  paperId: number,
+  input: ResearchPaperUpdateInput
+): Promise<ResearchPaperOut> {
+  return request<ResearchPaperOut>(`/api/research/papers/${paperId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteResearchPaper(paperId: number): Promise<void> {
+  return request<void>(`/api/research/papers/${paperId}`, { method: "DELETE" });
+}
+
+export function getResearchNotes(topicId?: number): Promise<ResearchNoteOut[]> {
+  const qs = topicId != null ? `?topic_id=${topicId}` : "";
+  return request<ResearchNoteOut[]>(`/api/research/notes${qs}`, { cache: "no-store" });
+}
+
+export function createResearchNote(input: ResearchNoteCreateInput): Promise<ResearchNoteOut> {
+  return request<ResearchNoteOut>("/api/research/notes", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function deleteResearchNote(noteId: number): Promise<void> {
+  return request<void>(`/api/research/notes/${noteId}`, { method: "DELETE" });
+}
+
+export function getResearchExperiments(topicId?: number): Promise<ResearchExperimentOut[]> {
+  const qs = topicId != null ? `?topic_id=${topicId}` : "";
+  return request<ResearchExperimentOut[]>(`/api/research/experiments${qs}`, { cache: "no-store" });
+}
+
+export function createResearchExperiment(
+  input: ResearchExperimentCreateInput
+): Promise<ResearchExperimentOut> {
+  return request<ResearchExperimentOut>("/api/research/experiments", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateResearchExperiment(
+  experimentId: number,
+  input: ResearchExperimentUpdateInput
+): Promise<ResearchExperimentOut> {
+  return request<ResearchExperimentOut>(`/api/research/experiments/${experimentId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteResearchExperiment(experimentId: number): Promise<void> {
+  return request<void>(`/api/research/experiments/${experimentId}`, { method: "DELETE" });
+}
+
+export function getResearchMilestones(topicId?: number): Promise<ResearchMilestoneOut[]> {
+  const qs = topicId != null ? `?topic_id=${topicId}` : "";
+  return request<ResearchMilestoneOut[]>(`/api/research/milestones${qs}`, { cache: "no-store" });
+}
+
+export function createResearchMilestone(
+  input: ResearchMilestoneCreateInput
+): Promise<ResearchMilestoneOut> {
+  return request<ResearchMilestoneOut>("/api/research/milestones", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateResearchMilestone(
+  milestoneId: number,
+  input: ResearchMilestoneUpdateInput
+): Promise<ResearchMilestoneOut> {
+  return request<ResearchMilestoneOut>(`/api/research/milestones/${milestoneId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteResearchMilestone(milestoneId: number): Promise<void> {
+  return request<void>(`/api/research/milestones/${milestoneId}`, { method: "DELETE" });
+}
+
+export function getResearchOpportunities(statusFilter?: string): Promise<ResearchOpportunityOut[]> {
+  const qs = statusFilter ? `?status_filter=${encodeURIComponent(statusFilter)}` : "";
+  return request<ResearchOpportunityOut[]>(`/api/research/opportunities${qs}`, { cache: "no-store" });
+}
+
+export function createResearchOpportunity(
+  input: ResearchOpportunityCreateInput
+): Promise<ResearchOpportunityOut> {
+  return request<ResearchOpportunityOut>("/api/research/opportunities", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateResearchOpportunity(
+  opportunityId: number,
+  input: ResearchOpportunityUpdateInput
+): Promise<ResearchOpportunityOut> {
+  return request<ResearchOpportunityOut>(`/api/research/opportunities/${opportunityId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteResearchOpportunity(opportunityId: number): Promise<void> {
+  return request<void>(`/api/research/opportunities/${opportunityId}`, { method: "DELETE" });
+}
+
+export function addResearchOpportunityToGoals(opportunityId: number): Promise<GoalOut> {
+  return request<GoalOut>(`/api/research/opportunities/${opportunityId}/add-to-goals`, { method: "POST" });
 }

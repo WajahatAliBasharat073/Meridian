@@ -488,6 +488,12 @@ class GoalOut(BaseModel):
     progress_pct: int
     status: GoalStatus
     minutes_logged: int | None = None
+    #: Set only when this goal is linked to a money goal (app/models/finance.py).
+    #: Its progress is always computed from real transactions, never the
+    #: manual slider progress_pct above -- the two coexist rather than one
+    #: overriding the other, since they measure different things.
+    finance_goal_id: int | None = None
+    linked_finance_goal: FinanceGoalOut | None = None
 
 
 class GoalCreate(BaseModel):
@@ -495,11 +501,16 @@ class GoalCreate(BaseModel):
     description: str | None = None
     category: str | None = None
     target_date: date | None = None
+    finance_goal_id: int | None = None
 
 
 class GoalUpdate(BaseModel):
     progress_pct: int | None = Field(default=None, ge=0, le=100)
     status: GoalStatus | None = None
+    #: None = no change (matches progress_pct/status above); 0 = clear an
+    #: existing link (0 is never a real finance_goals.id); any other value
+    #: = link to that finance goal.
+    finance_goal_id: int | None = None
 
 
 class TimeBudgetOut(BaseModel):
@@ -647,6 +658,19 @@ class ReadingSessionCreate(BaseModel):
     note: str | None = None
 
 
+ReadingPriority = Literal["high", "medium", "low"]
+
+
+class ReadingQuoteOut(BaseModel):
+    text: str
+    page: int | None = None
+
+
+class ReadingQuoteCreate(BaseModel):
+    text: str = Field(min_length=1)
+    page: int | None = Field(default=None, ge=0)
+
+
 class ReadingBookOut(BaseModel):
     id: int
     title: str
@@ -660,6 +684,11 @@ class ReadingBookOut(BaseModel):
     started_date: date | None = None
     finished_date: date | None = None
     notes: str | None = None
+    priority: ReadingPriority | None = None
+    tags: list[str] = Field(default_factory=list)
+    quotes: list[ReadingQuoteOut] = Field(default_factory=list)
+    why_reading: str | None = None
+    revisit_date: date | None = None
 
     # Computed from `reading_sessions`, never stored — see ReadingBook's
     # docstring. None until at least one session has logged a page.
@@ -680,6 +709,9 @@ class ReadingBookCreate(BaseModel):
     category: ReadingCategory | None = None
     status: ReadingStatus = "reading"
     started_date: date | None = None
+    priority: ReadingPriority | None = None
+    tags: list[str] = Field(default_factory=list)
+    why_reading: str | None = None
 
 
 class ReadingBookUpdate(BaseModel):
@@ -694,6 +726,21 @@ class ReadingBookUpdate(BaseModel):
     started_date: date | None = None
     finished_date: date | None = None
     notes: str | None = None
+    priority: ReadingPriority | None = None
+    tags: list[str] | None = None
+    why_reading: str | None = None
+    revisit_date: date | None = None
+
+
+class ReadingStatsOut(BaseModel):
+    completed_count: int
+    reading_count: int
+    to_read_count: int
+    completed_this_month: int
+    completed_this_year: int
+    pages_read_this_month: int
+    streak_days: int
+    top_categories: list[tuple[str, int]] = Field(default_factory=list)
 
 
 class FocusSessionOut(BaseModel):
@@ -999,3 +1046,470 @@ class PlacementApplyIn(BaseModel):
     #: question_id -> self-rated mastery on the existing 0-7 ladder. Empty
     #: means "estimate from my history instead".
     answers: dict[int, int] = Field(default_factory=dict)
+
+
+# ------------------------------------------------------------- Finance
+
+AccountType = Literal["cash", "bank", "savings", "investment", "receivable", "credit", "loan", "other"]
+TransactionType = Literal["income", "expense"]
+TransactionStatus = Literal["actual", "planned"]
+RecurringInterval = Literal["weekly", "monthly", "yearly"]
+FinanceGoalCategory = Literal["emergency_fund", "short_term", "long_term", "custom"]
+FinanceGoalStatus = Literal["active", "completed", "abandoned"]
+
+
+class FinanceAccountOut(BaseModel):
+    id: int
+    name: str
+    account_type: AccountType
+    currency: str
+    opening_balance: float
+    current_balance: float
+    is_liability: bool
+    is_active: bool
+
+
+class FinanceAccountCreate(BaseModel):
+    name: str = Field(min_length=1)
+    account_type: AccountType
+    currency: str = Field(default="AUD", min_length=3, max_length=3)
+    opening_balance: float = Field(default=0)
+
+
+class FinanceAccountUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1)
+    is_active: bool | None = None
+
+
+class FinanceCategoryOut(BaseModel):
+    id: int
+    name: str
+    kind: TransactionType
+    parent_id: int | None = None
+    is_system: bool
+
+
+class FinanceCategoryCreate(BaseModel):
+    name: str = Field(min_length=1)
+    kind: TransactionType
+    parent_id: int | None = None
+
+
+class FinanceTransactionOut(BaseModel):
+    id: int
+    account_id: int
+    category_id: int
+    type: TransactionType
+    amount: float
+    currency: str
+    occurred_on: DateOnly
+    status: TransactionStatus
+    description: str | None = None
+    notes: str | None = None
+    goal_id: int | None = None
+
+
+class FinanceTransactionCreate(BaseModel):
+    account_id: int
+    category_id: int
+    type: TransactionType
+    amount: float = Field(gt=0)
+    currency: str = Field(default="AUD", min_length=3, max_length=3)
+    occurred_on: DateOnly
+    status: TransactionStatus = "actual"
+    description: str | None = None
+    notes: str | None = None
+    goal_id: int | None = None
+
+
+class FinanceRecurringOut(BaseModel):
+    id: int
+    description: str
+    account_id: int
+    category_id: int
+    type: TransactionType
+    amount: float
+    currency: str
+    interval: RecurringInterval
+    anchor_day: int
+    next_due_date: DateOnly
+    active: bool
+
+
+class FinanceRecurringCreate(BaseModel):
+    description: str = Field(min_length=1)
+    account_id: int
+    category_id: int
+    type: TransactionType
+    amount: float = Field(gt=0)
+    currency: str = Field(default="AUD", min_length=3, max_length=3)
+    interval: RecurringInterval
+    anchor_day: int = Field(ge=0, le=31)
+    next_due_date: DateOnly
+
+
+class FinanceBudgetOut(BaseModel):
+    id: int
+    category_id: int
+    category_name: str
+    planned: float
+    actual: float
+    remaining: float
+    utilization_pct: float
+    over_budget: bool
+
+
+class FinanceBudgetUpsert(BaseModel):
+    category_id: int
+    monthly_amount: float = Field(gt=0)
+
+
+class FinanceGoalOut(BaseModel):
+    id: int
+    title: str
+    target_amount: float
+    #: Always SUM of this goal's linked contributions -- never a
+    #: typed-in number (models/finance.py).
+    current_amount: float
+    remaining: float
+    progress_pct: float
+    required_monthly_contribution: float | None = None
+    currency: str
+    target_date: DateOnly | None = None
+    category: FinanceGoalCategory
+    status: FinanceGoalStatus
+    notes: str | None = None
+
+
+class FinanceGoalCreate(BaseModel):
+    title: str = Field(min_length=1)
+    target_amount: float = Field(gt=0)
+    currency: str = Field(default="AUD", min_length=3, max_length=3)
+    target_date: DateOnly | None = None
+    category: FinanceGoalCategory = "custom"
+    notes: str | None = None
+
+
+class FinanceGoalUpdate(BaseModel):
+    status: FinanceGoalStatus | None = None
+
+
+class FinanceNetWorthPointOut(BaseModel):
+    snapshot_date: DateOnly
+    total_assets: float
+    total_liabilities: float
+    net_worth: float
+
+
+class FinanceDashboardOut(BaseModel):
+    month: DateOnly
+    income: float
+    expenses: float
+    savings: float
+    savings_rate_pct: float | None = None
+    income_change_pct: float | None = None
+    category_breakdown: list[dict[str, float | str]] = Field(default_factory=list)
+    outliers: list[dict[str, float | str]] = Field(default_factory=list)
+    budgets: list[FinanceBudgetOut] = Field(default_factory=list)
+    goals: list[FinanceGoalOut] = Field(default_factory=list)
+    upcoming_commitments: list[FinanceRecurringOut] = Field(default_factory=list)
+    upcoming_total: float = 0
+    net_worth: FinanceNetWorthPointOut | None = None
+    net_worth_trend: list[FinanceNetWorthPointOut] = Field(default_factory=list)
+    insights: list[str] = Field(default_factory=list)
+
+
+# --------------------------------------------------------------- Vocabulary
+
+VocabLearningStatus = Literal["known", "learning", "difficult", "need_to_revisit"]
+VocabCefrLevel = Literal["A1", "A2", "B1", "B2", "C1", "C2"]
+
+
+class VocabWordOut(BaseModel):
+    id: int
+    word: str
+    definition: str | None = None
+    example_sentence: str | None = None
+    pronunciation: str | None = None
+    part_of_speech: str | None = None
+    category: str | None = None
+    cefr_level: VocabCefrLevel | None = None
+    synonyms: str | None = None
+    antonyms: str | None = None
+    word_patterns: str | None = None
+    paraphrase: str | None = None
+    dictionary_link: str | None = None
+    notes: str | None = None
+    date_introduced: DateOnly
+    learning_status: VocabLearningStatus | None = None
+    source: str
+
+
+class VocabWordCreate(BaseModel):
+    word: str = Field(min_length=1)
+    definition: str | None = None
+    example_sentence: str | None = None
+    pronunciation: str | None = None
+    part_of_speech: str | None = None
+    category: str | None = None
+    cefr_level: VocabCefrLevel | None = None
+    synonyms: str | None = None
+    antonyms: str | None = None
+    word_patterns: str | None = None
+    paraphrase: str | None = None
+    dictionary_link: str | None = None
+    notes: str | None = None
+
+
+class VocabWordUpdate(BaseModel):
+    definition: str | None = None
+    example_sentence: str | None = None
+    pronunciation: str | None = None
+    part_of_speech: str | None = None
+    category: str | None = None
+    cefr_level: VocabCefrLevel | None = None
+    synonyms: str | None = None
+    antonyms: str | None = None
+    word_patterns: str | None = None
+    paraphrase: str | None = None
+    dictionary_link: str | None = None
+    notes: str | None = None
+
+
+class VocabStatusUpdate(BaseModel):
+    learning_status: VocabLearningStatus | None = None
+
+
+class VocabImportResultOut(BaseModel):
+    created: int
+    updated: int
+    total_rows: int
+
+
+class VocabSummaryOut(BaseModel):
+    """Same shape as the ML/DSA bank summaries -- total, attempted (any
+    learning_status set), not attempted (no row touched yet), and a
+    breakdown so the bar can show more than one number."""
+
+    total_words: int
+    attempted_count: int
+    not_attempted_count: int
+    known_count: int
+    learning_count: int
+    difficult_count: int
+    need_to_revisit_count: int
+    by_level: list[tuple[str, int]] = Field(default_factory=list)
+
+
+# --------------------------------------------------------------- Overview
+
+class OverviewOut(BaseModel):
+    """The cross-domain "Personal OS" summary — every number here is a
+    read of an already-computed engine result (readiness_pct,
+    month_summary, ...), never a new calculation invented for this
+    endpoint alone."""
+
+    readiness_pct: float | None = None
+    reviews_due_today: int
+    reviews_overdue: int
+    active_goal_count: int
+    finance_income_this_month: float | None = None
+    finance_expenses_this_month: float | None = None
+    finance_savings_this_month: float | None = None
+    research_minutes_this_week: int
+    highlights: list[str] = Field(default_factory=list)
+
+
+# ------------------------------------------------- Research command center
+
+ResearchTopicStatus = Literal["active", "paused", "completed", "abandoned"]
+ResearchPaperStatus = Literal["to_read", "reading", "read"]
+ResearchNoteKind = Literal["idea", "question", "hypothesis", "methodology", "note"]
+ResearchExperimentStatus = Literal["planned", "running", "completed", "abandoned"]
+ResearchMilestoneStatus = Literal["pending", "in_progress", "completed", "missed"]
+ResearchVenueType = Literal["conference", "journal", "workshop"]
+ResearchRelevance = Literal["high", "medium", "low"]
+ResearchOpportunityStatus = Literal[
+    "interested", "shortlisted", "preparing", "submitted", "accepted", "rejected", "not_relevant"
+]
+
+
+class ResearchTopicOut(BaseModel):
+    id: int
+    title: str
+    description: str | None = None
+    status: ResearchTopicStatus
+    current_blocker: str | None = None
+
+
+class ResearchTopicCreate(BaseModel):
+    title: str = Field(min_length=1)
+    description: str | None = None
+
+
+class ResearchTopicUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    status: ResearchTopicStatus | None = None
+    current_blocker: str | None = None
+
+
+class ResearchPaperOut(BaseModel):
+    id: int
+    topic_id: int | None = None
+    title: str
+    authors: str | None = None
+    year: int | None = None
+    venue: str | None = None
+    url: str | None = None
+    status: ResearchPaperStatus
+    summary: str | None = None
+    relevance_note: str | None = None
+
+
+class ResearchPaperCreate(BaseModel):
+    topic_id: int | None = None
+    title: str = Field(min_length=1)
+    authors: str | None = None
+    year: int | None = None
+    venue: str | None = None
+    url: str | None = None
+    status: ResearchPaperStatus = "to_read"
+    summary: str | None = None
+    relevance_note: str | None = None
+
+
+class ResearchPaperUpdate(BaseModel):
+    topic_id: int | None = None
+    title: str | None = None
+    authors: str | None = None
+    year: int | None = None
+    venue: str | None = None
+    url: str | None = None
+    status: ResearchPaperStatus | None = None
+    summary: str | None = None
+    relevance_note: str | None = None
+
+
+class ResearchNoteOut(BaseModel):
+    id: int
+    topic_id: int | None = None
+    paper_id: int | None = None
+    kind: ResearchNoteKind
+    content: str
+
+
+class ResearchNoteCreate(BaseModel):
+    topic_id: int | None = None
+    paper_id: int | None = None
+    kind: ResearchNoteKind = "note"
+    content: str = Field(min_length=1)
+
+
+class ResearchExperimentOut(BaseModel):
+    id: int
+    topic_id: int | None = None
+    title: str
+    description: str | None = None
+    dataset: str | None = None
+    methodology_note: str | None = None
+    status: ResearchExperimentStatus
+    result_summary: str | None = None
+    started_date: date | None = None
+    completed_date: date | None = None
+
+
+class ResearchExperimentCreate(BaseModel):
+    topic_id: int | None = None
+    title: str = Field(min_length=1)
+    description: str | None = None
+    dataset: str | None = None
+    methodology_note: str | None = None
+    status: ResearchExperimentStatus = "planned"
+    started_date: date | None = None
+
+
+class ResearchExperimentUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    dataset: str | None = None
+    methodology_note: str | None = None
+    status: ResearchExperimentStatus | None = None
+    result_summary: str | None = None
+    started_date: date | None = None
+    completed_date: date | None = None
+
+
+class ResearchMilestoneOut(BaseModel):
+    id: int
+    topic_id: int | None = None
+    title: str
+    description: str | None = None
+    target_date: date | None = None
+    status: ResearchMilestoneStatus
+
+
+class ResearchMilestoneCreate(BaseModel):
+    topic_id: int | None = None
+    title: str = Field(min_length=1)
+    description: str | None = None
+    target_date: date | None = None
+    status: ResearchMilestoneStatus = "pending"
+
+
+class ResearchMilestoneUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    target_date: date | None = None
+    status: ResearchMilestoneStatus | None = None
+
+
+class ResearchOpportunityOut(BaseModel):
+    id: int
+    venue_name: str
+    venue_type: ResearchVenueType
+    research_area: str | None = None
+    submission_deadline: date | None = None
+    notification_date: date | None = None
+    event_date: date | None = None
+    location: str | None = None
+    links: list[str] = Field(default_factory=list)
+    submission_type: str | None = None
+    relevance: ResearchRelevance | None = None
+    priority: ResearchRelevance | None = None
+    status: ResearchOpportunityStatus
+    notes: str | None = None
+
+
+class ResearchOpportunityCreate(BaseModel):
+    venue_name: str = Field(min_length=1)
+    venue_type: ResearchVenueType
+    research_area: str | None = None
+    submission_deadline: date | None = None
+    notification_date: date | None = None
+    event_date: date | None = None
+    location: str | None = None
+    links: list[str] = Field(default_factory=list)
+    submission_type: str | None = None
+    relevance: ResearchRelevance | None = None
+    priority: ResearchRelevance | None = None
+    notes: str | None = None
+
+
+class ResearchOpportunityUpdate(BaseModel):
+    submission_deadline: date | None = None
+    notification_date: date | None = None
+    event_date: date | None = None
+    location: str | None = None
+    relevance: ResearchRelevance | None = None
+    priority: ResearchRelevance | None = None
+    status: ResearchOpportunityStatus | None = None
+    notes: str | None = None
+
+
+class ResearchAtAGlanceOut(BaseModel):
+    active_topic: ResearchTopicOut | None = None
+    papers_to_read_count: int
+    next_milestone: ResearchMilestoneOut | None = None
+    next_opportunity: ResearchOpportunityOut | None = None
+    highlights: list[str] = Field(default_factory=list)
