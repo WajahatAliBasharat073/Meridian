@@ -12,7 +12,9 @@ import {
   HeartPulse,
   LayoutDashboard,
   Settings,
+  Sparkles,
   Target,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 
@@ -41,7 +43,8 @@ export interface NavGroup {
  * 5. Goals: Objectives connected directly to logged activity minutes
  * 6. Coach: Ask Meridian conversational AI coach
  * 7. Health: Recovery, sleep, hydration, biological stamina
- * 8. Settings: Audio chimes, notification preferences, model keys
+ * 8. Finance: Accounts, transactions, budgets, savings goals, net worth
+ * 9. Settings: Audio chimes, notification preferences, model keys
  */
 export const NAV_GROUPS: NavGroup[] = [
   {
@@ -61,6 +64,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/research", label: "Research & Thesis", icon: FlaskConical },
       { href: "/resources", label: "Learning Resources", icon: Library },
       { href: "/reading", label: "Reading Log", icon: BookOpen },
+      { href: "/vocabulary", label: "English Vocabulary", icon: Sparkles },
     ],
   },
   {
@@ -73,6 +77,10 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Goals",
     items: [{ href: "/goals", label: "Goals", icon: Target }],
+  },
+  {
+    label: "Finance",
+    items: [{ href: "/finance", label: "Finance", icon: Wallet, primary: true }],
   },
   {
     label: "Coach",

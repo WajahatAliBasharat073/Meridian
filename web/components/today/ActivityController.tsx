@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Check,
   Clock,
@@ -32,6 +33,7 @@ import {
   type ActiveSession,
 } from "@/lib/activityStore";
 import { useMarkBlockStatus } from "@/hooks/useMutations";
+import { resolveFocusDestination } from "@/lib/focusRouting";
 import { pushNotification } from "@/lib/notifications";
 import { playSound } from "@/lib/soundEngine";
 import type { TimeBlockOut } from "@/lib/types";
@@ -43,6 +45,7 @@ export function ActivityController({
   block: TimeBlockOut | null;
   upcomingBlock?: TimeBlockOut | null;
 }) {
+  const router = useRouter();
   const [session, setSession] = useState<ActiveSession | null>(getActiveSession());
   const [nowSec, setNowSec] = useState<number>(() => Math.floor(Date.now() / 1000));
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -140,15 +143,23 @@ export function ActivityController({
             ) : (
               <Button
                 size="sm"
-                onClick={() =>
+                onClick={() => {
                   startActivitySession(
                     upcomingBlock.id,
                     upcomingBlock.activity,
                     upcomingBlock.category,
                     upcomingBlock.planned_minutes,
                     timeStringToMinutes(upcomingBlock.end)
-                  )
-                }
+                  );
+                  // The timer is global (lib/activityStore), so navigating
+                  // away doesn't stop or lose it -- coming back to Today
+                  // later still shows it running.
+                  const destination = resolveFocusDestination(
+                    upcomingBlock.category,
+                    upcomingBlock.activity
+                  );
+                  if (destination) router.push(destination);
+                }}
                 className="gap-1.5 shrink-0 bg-accent text-accent-contrast hover:bg-accent-strong"
               >
                 <Play size={13} fill="currentColor" /> Start Focus Session
@@ -235,6 +246,10 @@ export function ActivityController({
       activityId: block.id,
       activityTitle: block.activity,
     });
+    // The timer is global (lib/activityStore), so navigating away doesn't
+    // stop or lose it -- coming back to Today later still shows it running.
+    const destination = resolveFocusDestination(block.category, block.activity);
+    if (destination) router.push(destination);
   };
 
   const handlePause = () => {
