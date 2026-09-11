@@ -62,6 +62,9 @@ _TEMPLATE_MARKERS = (
     "what in a problem statement tells you to reach for",
     "design:",
     "case study —",
+    "write the sql:",
+    "when is it the right choice, and what does it cost over the simpler option",
+    "what problem did it solve, what was the prior limitation, and what is the one idea that made it work",
 )
 
 
