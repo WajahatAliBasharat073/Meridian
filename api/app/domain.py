@@ -10,6 +10,7 @@ engines never see a Session, so a test constructs fixtures with no DB at all.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
@@ -25,6 +26,11 @@ LADDER_DAYS: dict[str, int] = {
     "L6": 60,
 }
 
+# "Ready" for this curriculum means holding a problem at L5 or L6 — can
+# reason about trade-offs / can design a production system with it, not
+# just having solved it once.
+L5_PLUS = ("L5", "L6")
+
 
 def level_index(level: str) -> int:
     return MASTERY_LEVELS.index(level)
@@ -38,6 +44,19 @@ def demote(level: str) -> str:
 def promote(level: str) -> str:
     idx = min(level_index(level) + 1, len(MASTERY_LEVELS) - 1)
     return MASTERY_LEVELS[idx]
+
+
+def readiness_pct(total: int, latest_mastery_levels: Iterable[str]) -> float | None:
+    """% of the curriculum held at L5+, or None on a brand-new account.
+
+    `engines/summary.py` and `routers/today.py` independently computed
+    this identical ratio before this was pulled out — one policy
+    decision (what "ready" means), not two.
+    """
+    if not total:
+        return None
+    l5_plus_count = sum(1 for level in latest_mastery_levels if level in L5_PLUS)
+    return round(100 * l5_plus_count / total, 1)
 
 
 @dataclass(frozen=True)

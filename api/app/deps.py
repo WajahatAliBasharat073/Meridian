@@ -23,7 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.db import get_session
+from app.logging import get_logger
 from app.models.core import User
+
+log = get_logger(__name__)
 
 # Stable, arbitrary UUID for local dev only — never used once real auth
 # (either verification path below) is configured.
@@ -71,7 +74,9 @@ async def _get_jwks(supabase_url: str, *, force_refresh: bool = False) -> list[d
     except Exception as err:
         # Degrade gracefully if Supabase JWKS is unreachable or times out
         if _jwks_cache["keys"]:
+            log.warning("jwks_fetch_failed_using_cache", error=str(err))
             return list(_jwks_cache["keys"])
+        log.error("jwks_fetch_failed_no_cache", error=str(err))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Auth provider temporarily unreachable — check your network connection",
@@ -99,6 +104,7 @@ async def _verify_asymmetric(token: str, header: dict[str, Any], settings: Setti
         matching = next((k for k in keys if k.get("kid") == kid), None)
 
     if matching is None:
+        log.warning("auth_unknown_signing_key", kid=kid)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown signing key")
 
     try:
@@ -106,6 +112,7 @@ async def _verify_asymmetric(token: str, header: dict[str, Any], settings: Setti
             jwt.decode(token, matching, algorithms=[header["alg"]], options={"verify_aud": False})
         )
     except JWTError as exc:
+        log.warning("auth_invalid_token", reason=str(exc))
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
 
 
@@ -120,6 +127,7 @@ async def get_current_user_id(
         return STUB_USER_ID
 
     if not authorization or not authorization.startswith("Bearer "):
+        log.warning("auth_missing_bearer_token")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
 
     token = authorization.removeprefix("Bearer ")
@@ -127,6 +135,7 @@ async def get_current_user_id(
     try:
         header = jwt.get_unverified_header(token)
     except JWTError as exc:
+        log.warning("auth_malformed_token", reason=str(exc))
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Malformed token") from exc
 
     if header.get("alg") == "HS256":
@@ -145,12 +154,14 @@ async def get_current_user_id(
                 )
             )
         except JWTError as exc:
+            log.warning("auth_invalid_token", reason=str(exc))
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
     else:
         payload = await _verify_asymmetric(token, header, settings)
 
     sub = payload.get("sub")
     if not sub:
+        log.warning("auth_token_missing_subject")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing subject")
     user_id = uuid.UUID(sub)
     await _ensure_user_row(session, user_id, payload.get("email"))

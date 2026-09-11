@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.logging import configure_logging
 from app.routers import (
     ai_settings,
     attempts,
@@ -11,21 +12,32 @@ from app.routers import (
     curriculum,
     daily_recap,
     dashboard,
+    finance_accounts,
+    finance_budgets,
+    finance_dashboard,
+    finance_goals,
+    finance_recurring,
+    finance_transactions,
     focus_sessions,
     goals,
     life_logs,
+    overview,
     problems,
     profile,
     questions,
     recommend,
     reflections,
+    research,
     reviews,
     time_budgets,
     today,
     verification,
     vitals,
+    vocab,
     weekly_review,
 )
+
+configure_logging()
 
 settings = get_settings()
 
@@ -61,6 +73,16 @@ app.include_router(life_logs.router)
 app.include_router(curriculum.router)
 app.include_router(verification.router)
 app.include_router(vitals.router)
+app.include_router(finance_accounts.router)
+app.include_router(finance_accounts.categories_router)
+app.include_router(finance_transactions.router)
+app.include_router(finance_recurring.router)
+app.include_router(finance_budgets.router)
+app.include_router(finance_goals.router)
+app.include_router(finance_dashboard.router)
+app.include_router(vocab.router)
+app.include_router(overview.router)
+app.include_router(research.router)
 
 
 @app.get("/health")

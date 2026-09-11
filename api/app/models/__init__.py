@@ -1,6 +1,15 @@
 from app.models.base import Base
 from app.models.concepts import Concept, ConceptAttempt
 from app.models.core import PrayerTimes, TimeBlock, User
+from app.models.finance import (
+    FinanceAccount,
+    FinanceBudget,
+    FinanceCategory,
+    FinanceGoal,
+    FinanceNetWorthSnapshot,
+    FinanceRecurring,
+    FinanceTransaction,
+)
 from app.models.goals import DailyReflection, Goal, TimeBudget
 from app.models.life import (
     Meal,
@@ -33,6 +42,14 @@ from app.models.questions import (
     QuestionProgress,
 )
 from app.models.repetition import Mistake, Mock, Review
+from app.models.research import (
+    ResearchExperiment,
+    ResearchMilestone,
+    ResearchNote,
+    ResearchOpportunity,
+    ResearchPaper,
+    ResearchTopic,
+)
 from app.models.sessions import FocusSession, FocusSessionEvent
 
 __all__ = [
@@ -74,4 +91,17 @@ __all__ = [
     "DailyReflection",
     "FocusSession",
     "FocusSessionEvent",
+    "FinanceAccount",
+    "FinanceCategory",
+    "FinanceGoal",
+    "FinanceRecurring",
+    "FinanceTransaction",
+    "FinanceBudget",
+    "FinanceNetWorthSnapshot",
+    "ResearchTopic",
+    "ResearchPaper",
+    "ResearchNote",
+    "ResearchExperiment",
+    "ResearchMilestone",
+    "ResearchOpportunity",
 ]
