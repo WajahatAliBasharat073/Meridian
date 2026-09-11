@@ -22,10 +22,12 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from app.engines.policy import MIN_SAMPLES_FOR_INSIGHT
+
 # Below this many *distinct rated questions with logged time*, don't
 # characterise pace at all — the same bar `punctuality.py` sets for focus
-# sessions, and for the same reason.
-MIN_QUESTIONS_FOR_INSIGHT = 5
+# sessions (app/engines/policy.py), and for the same reason.
+MIN_QUESTIONS_FOR_INSIGHT = MIN_SAMPLES_FOR_INSIGHT
 
 
 @dataclass(frozen=True)

@@ -11,6 +11,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 
 from app.domain import (
+    L5_PLUS,
     MASTERY_LEVELS,
     AttemptFixture,
     AttemptsByDay,
@@ -19,9 +20,8 @@ from app.domain import (
     PatternCoverage,
     ProblemFixture,
     ReviewState,
+    readiness_pct,
 )
-
-L5_PLUS = ("L5", "L6")
 
 
 def _latest_attempt_by_problem(attempts: list[AttemptFixture]) -> dict[int, AttemptFixture]:
@@ -79,8 +79,6 @@ def compute_dashboard_summary(
     reviews_overdue_count = sum(1 for r in problem_reviews if r.due_date < today)
 
     total_problems = len(problems)
-    l5_plus_total = sum(1 for a in latest.values() if a.mastery_level in L5_PLUS)
-    readiness_pct = round(100 * l5_plus_total / total_problems, 1) if total_problems else None
 
     return DashboardSummary(
         total_problems=total_problems,
@@ -90,5 +88,5 @@ def compute_dashboard_summary(
         attempts_by_day=attempts_by_day,
         reviews_due_count=reviews_due_count,
         reviews_overdue_count=reviews_overdue_count,
-        readiness_pct=readiness_pct,
+        readiness_pct=readiness_pct(total_problems, (a.mastery_level for a in latest.values())),
     )

@@ -11,9 +11,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.engines.policy import MIN_SAMPLES_FOR_INSIGHT
+
 # Below this, don't characterise punctuality at all — "you're 50% on time"
-# off two sessions is noise dressed up as insight.
-MIN_SESSIONS_FOR_INSIGHT = 5
+# off two sessions is noise dressed up as insight. Same policy theory_pace.py
+# applies to question timing (app/engines/policy.py) -- kept as its own name
+# here since "sessions" is this engine's own vocabulary, not a re-export.
+MIN_SESSIONS_FOR_INSIGHT = MIN_SAMPLES_FOR_INSIGHT
 
 ON_TIME_GRACE_MINUTES = 5
 

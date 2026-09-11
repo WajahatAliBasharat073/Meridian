@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings, get_settings
 from app.db import get_session
 from app.deps import get_current_user_id
-from app.domain import Recommendation
+from app.domain import Recommendation, readiness_pct
 from app.engines.bandwidth import plan_bandwidth
 from app.models.core import TimeBlock
 from app.models.sessions import FocusSession
@@ -68,9 +68,7 @@ async def get_today(
     latest_by_problem: dict[int, str] = {}
     for a in attempt_fixtures:
         latest_by_problem[a.problem_id] = a.mastery_level
-    l5_plus = sum(1 for level in latest_by_problem.values() if level in ("L5", "L6"))
-    total_curriculum = len(await problems_repo.get_problem_fixtures(session)) or None
-    readiness_pct = round(100 * l5_plus / total_curriculum, 1) if total_curriculum else None
+    total_curriculum = len(await problems_repo.get_problem_fixtures(session))
 
     return TodayOut(
         date=today,
@@ -81,7 +79,7 @@ async def get_today(
         counters=TodayCounters(
             overdue_reviews=len(overdue_reviews),
             blocks_remaining=blocks_remaining,
-            readiness_pct=readiness_pct,
+            readiness_pct=readiness_pct(total_curriculum, latest_by_problem.values()),
         ),
     )
 
