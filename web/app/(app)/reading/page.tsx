@@ -2,7 +2,19 @@
 
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { BookOpen, CheckCircle, ChevronDown, Clock, PenLine, Plus, Star, X } from "lucide-react";
+import {
+  BookOpen,
+  CheckCircle,
+  ChevronDown,
+  Clock,
+  Flame,
+  PenLine,
+  Plus,
+  Quote,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -16,20 +28,26 @@ import { QueryError } from "@/components/ui/query-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/cn";
 import {
+  useAddReadingQuote,
   useCreateReadingBook,
+  useDeleteReadingBook,
+  useDeleteReadingQuote,
   useLogReadingSession,
   useReadingBooks,
+  useReadingStats,
   useUpdateReadingBook,
 } from "@/hooks/useReading";
 import {
   READING_CATEGORY_LABELS,
   READING_FORMAT_LABELS,
+  READING_PRIORITY_LABELS,
   READING_STATUS_LABELS,
 } from "@/lib/types";
 import type {
   ReadingBookOut,
   ReadingCategory,
   ReadingFormat,
+  ReadingPriority,
   ReadingStatus,
 } from "@/lib/types";
 
@@ -41,18 +59,44 @@ const STATUS_COLOR: Record<ReadingStatus, string> = {
   dropped: "var(--danger)",
 };
 
+const PRIORITY_COLOR: Record<ReadingPriority, string> = {
+  high: "var(--danger)",
+  medium: "var(--status-partial)",
+  low: "var(--text-faint)",
+};
+
 const FORMATS = Object.keys(READING_FORMAT_LABELS) as ReadingFormat[];
 const CATEGORIES = Object.keys(READING_CATEGORY_LABELS) as ReadingCategory[];
 const STATUSES = Object.keys(READING_STATUS_LABELS) as ReadingStatus[];
+const PRIORITIES = Object.keys(READING_PRIORITY_LABELS) as ReadingPriority[];
+
+const VIEW_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "All books" },
+  { value: "reading", label: "Currently reading" },
+  { value: "to_read", label: "Want to read" },
+  { value: "completed", label: "Completed" },
+  { value: "paused", label: "Paused" },
+  { value: "dropped", label: "Abandoned" },
+  { value: "high_priority", label: "High priority" },
+  { value: "needs_revisit", label: "Need to revisit" },
+];
 
 export default function ReadingPage() {
-  const { data, isLoading, isError, error, refetch } = useReadingBooks();
+  const [view, setView] = useState("");
   const [addOpen, setAddOpen] = useState(false);
 
-  const books = data ?? [];
-  const readingCount = books.filter((b) => b.status === "reading").length;
-  const completedCount = books.filter((b) => b.status === "completed").length;
-  const totalMinutesLogged = books.reduce((acc, b) => acc + b.total_minutes_logged, 0);
+  const isHighPriorityView = view === "high_priority";
+  const isRevisitView = view === "needs_revisit";
+  const statusFilter =
+    isHighPriorityView || isRevisitView || view === "" ? undefined : (view as ReadingStatus);
+
+  const { data, isLoading, isError, error, refetch } = useReadingBooks({
+    statusFilter,
+    needsRevisit: isRevisitView,
+  });
+  const { data: stats } = useReadingStats();
+
+  const books = (data ?? []).filter((b) => !isHighPriorityView || b.priority === "high");
 
   return (
     <PageContainer width="wide">
@@ -69,25 +113,53 @@ export default function ReadingPage() {
         }
       />
 
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <Card className="p-4">
           <p className="text-xs text-text-faint">Currently Reading</p>
           <p className="text-2xl font-bold text-status-partial tabular-nums font-mono mt-1">
-            {readingCount}
+            {stats?.reading_count ?? "—"}
           </p>
         </Card>
         <Card className="p-4">
           <p className="text-xs text-text-faint">Completed</p>
           <p className="text-2xl font-bold text-status-done tabular-nums font-mono mt-1">
-            {completedCount}
+            {stats?.completed_count ?? "—"}
+          </p>
+          <p className="text-[10px] text-text-faint mt-0.5">
+            {stats ? `${stats.completed_this_month} this month` : ""}
           </p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs text-text-faint">Minutes Logged</p>
+          <p className="text-xs text-text-faint">Pages This Month</p>
           <p className="text-2xl font-bold text-accent-strong tabular-nums font-mono mt-1">
-            {totalMinutesLogged}
+            {stats?.pages_read_this_month ?? "—"}
           </p>
         </Card>
+        <Card className="p-4">
+          <p className="text-xs text-text-faint flex items-center gap-1">
+            <Flame size={12} /> Reading Streak
+          </p>
+          <p className="text-2xl font-bold text-text tabular-nums font-mono mt-1">
+            {stats ? `${stats.streak_days}d` : "—"}
+          </p>
+        </Card>
+      </div>
+
+      <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+        {VIEW_OPTIONS.map((o) => (
+          <button
+            key={o.value}
+            onClick={() => setView(o.value)}
+            className={cn(
+              "px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors border",
+              view === o.value
+                ? "bg-surface text-text border-border shadow-xs"
+                : "text-text-muted border-transparent hover:bg-surface-2"
+            )}
+          >
+            {o.label}
+          </button>
+        ))}
       </div>
 
       {addOpen && <AddBookForm onClose={() => setAddOpen(false)} />}
@@ -107,7 +179,7 @@ export default function ReadingPage() {
       {data && books.length === 0 && !addOpen && (
         <EmptyState
           icon={BookOpen}
-          title="Nothing on your shelf yet"
+          title={view ? "No books match this view" : "Nothing on your shelf yet"}
           description="Add a book, paper, or article to start tracking real progress — the page you reach, not a guess."
           action={
             <Button variant="primary" size="sm" onClick={() => setAddOpen(true)} className="gap-1.5">
@@ -137,6 +209,9 @@ function AddBookForm({ onClose }: { onClose: () => void }) {
   const [format, setFormat] = useState<ReadingFormat>("book");
   const [category, setCategory] = useState<ReadingCategory | "">("");
   const [status, setStatus] = useState<ReadingStatus>("reading");
+  const [priority, setPriority] = useState<ReadingPriority | "">("");
+  const [tagsInput, setTagsInput] = useState("");
+  const [whyReading, setWhyReading] = useState("");
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -150,6 +225,11 @@ function AddBookForm({ onClose }: { onClose: () => void }) {
         format,
         category: category || undefined,
         status,
+        priority: priority || undefined,
+        tags: tagsInput.trim()
+          ? tagsInput.split(",").map((t) => t.trim()).filter(Boolean)
+          : undefined,
+        why_reading: whyReading.trim() || undefined,
       });
       onClose();
     } catch {
@@ -250,6 +330,40 @@ function AddBookForm({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <FieldLabel hint="optional">Priority</FieldLabel>
+            <Select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as ReadingPriority | "")}
+            >
+              <option value="">No priority</option>
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {READING_PRIORITY_LABELS[p]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <FieldLabel hint="optional, comma-separated">Tags</FieldLabel>
+            <Input
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+              placeholder="e.g. ml, career"
+            />
+          </div>
+        </div>
+
+        <div>
+          <FieldLabel hint="optional">Why you&apos;re reading this</FieldLabel>
+          <Input
+            value={whyReading}
+            onChange={(e) => setWhyReading(e.target.value)}
+            placeholder="e.g. Recommended for thesis literature review"
+          />
+        </div>
+
         {createBook.isError && (
           <p className="text-xs text-danger">Couldn&apos;t save this book — try again.</p>
         )}
@@ -271,6 +385,7 @@ function BookCard({ book }: { book: ReadingBookOut }) {
   const [loggingOpen, setLoggingOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const updateBook = useUpdateReadingBook();
+  const deleteBook = useDeleteReadingBook();
 
   const hasTarget = book.total_pages != null && book.total_pages > 0;
   const pct = book.progress_pct ?? 0;
@@ -280,7 +395,21 @@ function BookCard({ book }: { book: ReadingBookOut }) {
       <div className="flex gap-3 p-4">
         <Cover book={book} />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-text leading-snug text-balance">{book.title}</p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-semibold text-text leading-snug text-balance">{book.title}</p>
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm(`Remove "${book.title}" from your reading log?`)) {
+                  deleteBook.mutate(book.id);
+                }
+              }}
+              className="text-text-faint hover:text-danger shrink-0"
+              aria-label="Delete book"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
           {book.author && <p className="text-xs text-text-muted mt-0.5">{book.author}</p>}
           <div className="flex flex-wrap gap-1.5 mt-2">
             <Badge color={STATUS_COLOR[book.status]}>{READING_STATUS_LABELS[book.status]}</Badge>
@@ -288,7 +417,19 @@ function BookCard({ book }: { book: ReadingBookOut }) {
             {book.category && (
               <Badge color="var(--text-faint)">{READING_CATEGORY_LABELS[book.category]}</Badge>
             )}
+            {book.priority && (
+              <Badge color={PRIORITY_COLOR[book.priority]}>{READING_PRIORITY_LABELS[book.priority]}</Badge>
+            )}
           </div>
+          {book.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {book.tags.map((t) => (
+                <span key={t} className="text-[10px] text-text-faint">
+                  #{t}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -391,15 +532,142 @@ function BookCard({ book }: { book: ReadingBookOut }) {
               ))}
             </div>
           </div>
+          <div>
+            <FieldLabel hint="optional">Priority</FieldLabel>
+            <Select
+              value={book.priority ?? ""}
+              onChange={(e) =>
+                updateBook.mutate({
+                  bookId: book.id,
+                  input: { priority: (e.target.value || null) as ReadingPriority | null },
+                })
+              }
+            >
+              <option value="">No priority</option>
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {READING_PRIORITY_LABELS[p]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          {book.why_reading && (
+            <div>
+              <FieldLabel>Why you&apos;re reading this</FieldLabel>
+              <p className="text-xs text-text-muted leading-relaxed">{book.why_reading}</p>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-text-muted">
+              {book.revisit_date ? `Flagged to revisit ${book.revisit_date}` : "Not flagged to revisit"}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                updateBook.mutate({
+                  bookId: book.id,
+                  input: book.revisit_date
+                    ? { revisit_date: null }
+                    : { revisit_date: new Date().toISOString().slice(0, 10) },
+                })
+              }
+            >
+              {book.revisit_date ? "Clear" : "Flag to revisit"}
+            </Button>
+          </div>
           {book.last_session_note && (
             <div>
               <FieldLabel>Last note</FieldLabel>
               <p className="text-xs text-text-muted leading-relaxed">{book.last_session_note}</p>
             </div>
           )}
+          <QuotesSection book={book} />
         </div>
       )}
     </Card>
+  );
+}
+
+function QuotesSection({ book }: { book: ReadingBookOut }) {
+  const [adding, setAdding] = useState(false);
+  const [text, setText] = useState("");
+  const [page, setPage] = useState("");
+  const addQuote = useAddReadingQuote();
+  const deleteQuote = useDeleteReadingQuote();
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <FieldLabel>Quotes & highlights</FieldLabel>
+        <button
+          type="button"
+          onClick={() => setAdding((v) => !v)}
+          className="text-[11px] text-accent-strong hover:underline"
+        >
+          {adding ? "Cancel" : "+ Add"}
+        </button>
+      </div>
+
+      {book.quotes.length > 0 && (
+        <ul className="space-y-1.5 mb-2">
+          {book.quotes.map((q, i) => (
+            <li
+              key={`${q.text}-${i}`}
+              className="flex items-start gap-2 text-xs text-text-muted leading-relaxed rounded-lg bg-surface-2/50 p-2"
+            >
+              <Quote size={12} className="shrink-0 mt-0.5 text-text-faint" />
+              <span className="flex-1">
+                &ldquo;{q.text}&rdquo;
+                {q.page != null && <span className="text-text-faint"> — p.{q.page}</span>}
+              </span>
+              <button
+                type="button"
+                onClick={() => deleteQuote.mutate({ bookId: book.id, quoteIndex: i })}
+                className="text-text-faint hover:text-danger shrink-0"
+                aria-label="Delete quote"
+              >
+                <X size={12} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {adding && (
+        <div className="space-y-1.5">
+          <Input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Quote text"
+            className="h-9 text-xs"
+          />
+          <div className="flex gap-1.5">
+            <Input
+              type="number"
+              min={0}
+              value={page}
+              onChange={(e) => setPage(e.target.value)}
+              placeholder="Page (optional)"
+              className="h-9 text-xs"
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={!text.trim() || addQuote.isPending}
+              onClick={() => {
+                addQuote.mutate(
+                  { bookId: book.id, input: { text: text.trim(), page: page ? Number(page) : undefined } },
+                  { onSuccess: () => { setText(""); setPage(""); setAdding(false); } }
+                );
+              }}
+            >
+              Save
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
