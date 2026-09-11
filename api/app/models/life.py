@@ -41,15 +41,69 @@ class ThesisLog(Base):
     status: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
+VOCAB_LEARNING_STATUSES = ("known", "learning", "difficult", "need_to_revisit")
+
+
 class VocabWord(Base):
+    """English vocabulary, importable from a Notion export (no Notion API
+    access exists for this project -- see scripts/import_vocab_csv.py) and
+    manually addable. `notion_page_id` is the de-dup key for a re-import
+    (a Notion page id is stable across exports); `word` is matched
+    case-insensitively at the application layer for manual adds, since a
+    single-user table this size doesn't need a DB-level expression index
+    for it.
+
+    `learning_status` is one of four values the user picks directly --
+    unlike question_progress's mastery+status split, there is no separate
+    quantitative ladder here to keep independent from it, so
+    "need_to_revisit" is just a fourth status value, not a derived flag.
+    """
+
     __tablename__ = "vocab_words"
+    __table_args__ = (
+        CheckConstraint(
+            f"learning_status IS NULL OR learning_status IN {VOCAB_LEARNING_STATUSES!r}",
+            name="ck_vocab_words_learning_status",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), index=True)
-    word: Mapped[str] = mapped_column(String)
-    definition: Mapped[str] = mapped_column(String)
+    word: Mapped[str] = mapped_column(String, index=True)
+    # Nullable: a word list import supplies word + part_of_speech +
+    # cefr_level and nothing else -- a required definition would force a
+    # fabricated placeholder into every imported row.
+    definition: Mapped[str | None] = mapped_column(String, nullable=True)
     example_sentence: Mapped[str | None] = mapped_column(String, nullable=True)
+    pronunciation: Mapped[str | None] = mapped_column(String, nullable=True)
+    part_of_speech: Mapped[str | None] = mapped_column(String, nullable=True)
+    category: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    # CEFR level (A1-C2) -- distinct from `category`, which is a free-text
+    # tag; this is the Oxford-list-sourced proficiency level shown as its
+    # own column in the user's real Notion tracker.
+    cefr_level: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    synonyms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    antonyms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    word_patterns: Mapped[str | None] = mapped_column(Text, nullable=True)
+    paraphrase: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dictionary_link: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Freeform per-word notes the user writes themselves while reviewing --
+    # distinct from `paraphrase` (a rephrasing of the definition) and
+    # `word_patterns` (collocations); this is just a blank space for
+    # whatever the user wants to remember about the word.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     date_introduced: Mapped[date_] = mapped_column()
+    learning_status: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    # "manual" | "notion_import" | "oxford_5000_import" -- which path
+    # created this row.
+    source: Mapped[str] = mapped_column(String, default="manual")
+    # Stable Notion page id, only set for a Notion-imported row -- the
+    # de-dup key a re-import matches against so re-running that importer
+    # never creates a second row for the same Notion entry. An Oxford
+    # 5000 import has no such id and dedups on (word, part_of_speech)
+    # instead -- see scripts/import_oxford_5000.py.
+    notion_page_id: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
 class RecoveryLog(Base):
@@ -160,6 +214,15 @@ class ReadingBook(Base):
     started_date: Mapped[date_ | None] = mapped_column(nullable=True)
     finished_date: Mapped[date_ | None] = mapped_column(nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Triage for the to-read backlog -- distinct from `status` (a reading
+    # progress state) and from `category` (a genre).
+    priority: Mapped[str | None] = mapped_column(String, nullable=True)
+    tags: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    # {text, page?} objects -- a highlight is a different kind of note
+    # than a reading_session's "what I did today" note.
+    quotes: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    why_reading: Mapped[str | None] = mapped_column(Text, nullable=True)
+    revisit_date: Mapped[date_ | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column()
 
 
