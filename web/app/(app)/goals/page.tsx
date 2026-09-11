@@ -10,6 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/ui/query-state";
 import { useGoals, useCreateGoal, useUpdateGoal } from "@/hooks/useGoals";
+import { useFinanceGoals } from "@/hooks/useFinance";
+import { formatMoney } from "@/lib/money";
+import { Select } from "@/components/ui/select";
 import type { GoalOut } from "@/lib/types";
 
 function GoalCard({ goal }: { goal: GoalOut }) {
@@ -40,6 +43,39 @@ function GoalCard({ goal }: { goal: GoalOut }) {
         <p className="text-[11px] text-text-faint mb-2">
           {goal.minutes_logged} min logged under &ldquo;{goal.category}&rdquo;
         </p>
+      )}
+
+      {/* Computed from real linked transactions -- shown alongside, never
+          instead of, the manual self-report above, since they measure
+          different things (money saved vs. how the user feels about it). */}
+      {goal.linked_finance_goal && (
+        <div className="mb-2 rounded-lg border border-border bg-surface-2/50 p-2.5">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] uppercase tracking-wide text-text-faint">
+              Actual savings progress
+            </span>
+            <span className="text-[11px] font-mono tabular-nums text-text-muted">
+              {formatMoney(goal.linked_finance_goal.current_amount, goal.linked_finance_goal.currency)} /{" "}
+              {formatMoney(goal.linked_finance_goal.target_amount, goal.linked_finance_goal.currency)}
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-surface overflow-hidden">
+            <div
+              className="h-full rounded-full bg-status-done"
+              style={{ width: `${Math.min(goal.linked_finance_goal.progress_pct, 100)}%` }}
+            />
+          </div>
+          {goal.linked_finance_goal.required_monthly_contribution != null && (
+            <p className="text-[11px] text-text-faint mt-1">
+              Save{" "}
+              {formatMoney(
+                goal.linked_finance_goal.required_monthly_contribution,
+                goal.linked_finance_goal.currency
+              )}
+              /month to hit your target date
+            </p>
+          )}
+        </div>
       )}
 
       {editing ? (
@@ -88,10 +124,13 @@ function GoalCard({ goal }: { goal: GoalOut }) {
 
 function NewGoalForm({ onDone }: { onDone: () => void }) {
   const create = useCreateGoal();
+  const { data: financeGoals } = useFinanceGoals();
+  const unlinkedFinanceGoals = (financeGoals ?? []).filter((g) => g.status === "active");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [targetDate, setTargetDate] = useState("");
+  const [financeGoalId, setFinanceGoalId] = useState<number | "">("");
 
   return (
     <Card className="p-4">
@@ -106,6 +145,7 @@ function NewGoalForm({ onDone }: { onDone: () => void }) {
               description: description.trim() || undefined,
               category: category.trim() || undefined,
               target_date: targetDate || undefined,
+              finance_goal_id: financeGoalId === "" ? undefined : financeGoalId,
             },
             { onSuccess: onDone }
           );
@@ -139,6 +179,20 @@ function NewGoalForm({ onDone }: { onDone: () => void }) {
             className="h-10 rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
           />
         </div>
+        {unlinkedFinanceGoals.length > 0 && (
+          <Select
+            value={financeGoalId}
+            onChange={(e) => setFinanceGoalId(e.target.value ? Number(e.target.value) : "")}
+            className="h-10 text-sm"
+          >
+            <option value="">Not linked to a savings goal</option>
+            {unlinkedFinanceGoals.map((fg) => (
+              <option key={fg.id} value={fg.id}>
+                Track real progress against: {fg.title}
+              </option>
+            ))}
+          </Select>
+        )}
         <div className="flex gap-2">
           <Button type="submit" variant="primary" size="sm" disabled={!title.trim() || create.isPending}>
             {create.isPending ? "Adding…" : "Add goal"}
