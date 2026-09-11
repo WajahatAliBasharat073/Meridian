@@ -32,6 +32,16 @@ class Goal(Base, TimestampMixin):
     target_date: Mapped[date_ | None] = mapped_column(nullable=True)
     progress_pct: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String, default="active")
+    # Optional link to a money-shaped goal (app/models/finance.py's
+    # FinanceGoal) — kept as a separate table rather than adding
+    # target_amount/current_amount columns here, since this table's
+    # progress_pct is manual-only by design (see module docstring) and a
+    # linked finance goal's progress must instead be computed from real
+    # transactions. When set, the router attaches that computed progress
+    # alongside (never replacing) this row's own manual progress_pct.
+    finance_goal_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("finance_goals.id"), nullable=True
+    )
 
 
 class TimeBudget(Base):

@@ -27,9 +27,15 @@ async def create_goal(
     description: str | None,
     category: str | None,
     target_date: date | None,
+    finance_goal_id: int | None = None,
 ) -> Goal:
     goal = Goal(
-        user_id=user_id, title=title, description=description, category=category, target_date=target_date
+        user_id=user_id,
+        title=title,
+        description=description,
+        category=category,
+        target_date=target_date,
+        finance_goal_id=finance_goal_id,
     )
     session.add(goal)
     await session.commit()
@@ -43,6 +49,7 @@ async def update_goal(
     goal_id: int,
     progress_pct: int | None,
     status: str | None,
+    finance_goal_id: int | None = None,
 ) -> Goal | None:
     goal = await session.get(Goal, goal_id)
     if goal is None or goal.user_id != user_id:
@@ -51,6 +58,12 @@ async def update_goal(
         goal.progress_pct = progress_pct
     if status is not None:
         goal.status = status
+    if finance_goal_id is not None:
+        # 0 is never a real finance_goals.id (autoincrement starts at 1) --
+        # used here as the explicit "clear the link" value, since None
+        # already means "no change requested", matching progress_pct and
+        # status above.
+        goal.finance_goal_id = None if finance_goal_id == 0 else finance_goal_id
     await session.commit()
     await session.refresh(goal)
     return goal
