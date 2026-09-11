@@ -16,6 +16,7 @@ import { useDashboardSummary } from "@/hooks/useDashboardSummary";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useWeeklyReview } from "@/hooks/useWeeklyReview";
 import { KpiCard } from "@/components/dashboard/KpiCard";
+import { PersonalOverviewCard } from "@/components/dashboard/PersonalOverviewCard";
 import { LifeClock } from "@/components/dashboard/LifeClock";
 import { TodayProgress } from "@/components/dashboard/TodayProgress";
 import { DailyRecapCard } from "@/components/dashboard/DailyRecapCard";
@@ -168,6 +169,8 @@ export default function DashboardPage() {
                   accent={data.reviews_overdue_count > 0 ? "var(--danger)" : undefined}
                 />
               </div>
+
+              <PersonalOverviewCard />
 
               {/* GitHub-style Consistency Heatmap */}
               <ConsistencyHeatmap />
