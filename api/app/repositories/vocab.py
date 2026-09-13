@@ -207,15 +207,39 @@ async def upsert_oxford_word(
     part_of_speech: str | None,
     cefr_level: str | None,
     definition: str | None,
+    example_sentence: str | None = None,
+    synonyms: str | None = None,
+    antonyms: str | None = None,
+    word_patterns: str | None = None,
+    paraphrase: str | None = None,
+    dictionary_link: str | None = None,
 ) -> tuple[VocabWord, bool]:
-    """Insert, or update cefr_level/definition in place if this exact
-    (word, part_of_speech) row already exists for this user -- so
-    re-running the Oxford importer is always safe."""
+    """Insert, or update in place if this exact (word, part_of_speech) row
+    already exists for this user -- so re-running an Oxford importer
+    (the PDF-based one or scripts/import_oxford_5000_csv.py) is always
+    safe. `cefr_level` is always overwritten -- it's the one field two
+    Oxford sources can genuinely disagree on (a regional sub-list vs.
+    the master CEFR list), and the more complete/authoritative source
+    is expected to run last and correct it. Every other field only ever
+    fills in a gap, never clobbers something already there (a prior
+    import's data, or something the user typed in themselves)."""
     existing = await find_by_word_and_pos(session, user_id, word, part_of_speech)
     if existing is not None:
         existing.cefr_level = cefr_level
         if definition and not existing.definition:
             existing.definition = definition
+        if example_sentence and not existing.example_sentence:
+            existing.example_sentence = example_sentence
+        if synonyms and not existing.synonyms:
+            existing.synonyms = synonyms
+        if antonyms and not existing.antonyms:
+            existing.antonyms = antonyms
+        if word_patterns and not existing.word_patterns:
+            existing.word_patterns = word_patterns
+        if paraphrase and not existing.paraphrase:
+            existing.paraphrase = paraphrase
+        if dictionary_link and not existing.dictionary_link:
+            existing.dictionary_link = dictionary_link
         await session.commit()
         await session.refresh(existing)
         return existing, False
@@ -224,8 +248,14 @@ async def upsert_oxford_word(
         user_id=user_id,
         word=word.strip(),
         definition=definition,
+        example_sentence=example_sentence,
         part_of_speech=part_of_speech,
         cefr_level=cefr_level,
+        synonyms=synonyms,
+        antonyms=antonyms,
+        word_patterns=word_patterns,
+        paraphrase=paraphrase,
+        dictionary_link=dictionary_link,
         date_introduced=date.today(),
         source="oxford_5000_import",
     )

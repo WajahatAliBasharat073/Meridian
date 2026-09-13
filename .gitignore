@@ -23,6 +23,12 @@ web/out/
 *.xlsx
 *.db
 *.sqlite3
+*.pdf
+*.csv
+daily_schedule_sample.txt
+daily_schedule_sep7.txt
+meals_grocery_sample.txt
+sheets_summary.txt
 
 # OS / editor
 .DS_Store
