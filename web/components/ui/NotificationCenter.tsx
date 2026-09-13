@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Bell, BellOff, Check, Clock, Droplets, Volume2, VolumeX, X } from "lucide-react";
 import { subscribeActiveSession, type ActiveSession } from "@/lib/activityStore";
+import { startDocumentTitleTimer } from "@/lib/documentTitleTimer";
 import { logWaterIntake } from "@/lib/hydration";
 import {
   dismissNotification,
@@ -12,7 +13,16 @@ import {
   subscribeNotifications,
   type SmartNotification,
 } from "@/lib/notifications";
+import { requestOsNotificationPermission } from "@/lib/osNotifications";
+import {
+  evaluateReminders,
+  loadSentState,
+  saveSentState,
+  type ReminderKind,
+} from "@/lib/sessionReminders";
 import { getSoundSettings, saveSoundSettings } from "@/lib/soundEngine";
+import { nowMinutesInKarachi } from "@/lib/time";
+import { useToday } from "@/hooks/useToday";
 import { Button } from "@/components/ui/button";
 
 // How often a reminder repeats during a continuous active session — every
@@ -77,12 +87,79 @@ function useHydrationReminders() {
   }, []);
 }
 
+// Every notification the reminder schedule below can fire, and the
+// in-app toast copy for each -- kept together so the wording for a
+// given ReminderKind can't drift out of sync with the kind itself.
+const REMINDER_COPY: Record<
+  ReminderKind,
+  { kind: "activity_pre" | "activity_start" | "activity_nudge"; title: string; body: (activity: string) => string }
+> = {
+  pre: {
+    kind: "activity_pre",
+    title: "Upcoming session",
+    body: (activity) => `${activity} starts in 5 minutes.`,
+  },
+  start: {
+    kind: "activity_start",
+    title: "Session started",
+    body: (activity) => `${activity} — start focusing now.`,
+  },
+  nudge: {
+    kind: "activity_nudge",
+    title: "Still not started",
+    body: (activity) => `You haven't pressed Focus for "${activity}" yet.`,
+  },
+};
+
+/** Fires the 5-minute pre-session notice, the session-start notice, and
+ * (once) a follow-up nudge if Focus still hasn't been pressed a few
+ * minutes later -- see lib/sessionReminders.ts for the actual timing
+ * rules, kept pure and unit-tested there. This hook just ticks the
+ * clock, reads today's real schedule (shared with whatever page called
+ * useToday -- react-query dedupes it), and persists which reminders
+ * have already fired so a re-render or tab switch never re-sends one. */
+function useSessionReminders() {
+  const { data } = useToday();
+
+  useEffect(() => {
+    void requestOsNotificationPermission();
+  }, []);
+
+  useEffect(() => {
+    const blocks = data?.blocks;
+    if (!blocks) return;
+
+    const check = () => {
+      const { due, nextState } = evaluateReminders(nowMinutesInKarachi(), blocks, loadSentState());
+      for (const { kind, block } of due) {
+        const copy = REMINDER_COPY[kind];
+        pushNotification({
+          kind: copy.kind,
+          title: copy.title,
+          body: copy.body(block.activity),
+          soundType: kind === "nudge" ? "reminder" : "gentle",
+          activityId: block.id,
+          activityTitle: block.activity,
+        });
+      }
+      if (due.length > 0) saveSentState(nextState);
+    };
+
+    check();
+    const interval = setInterval(check, 20_000);
+    return () => clearInterval(interval);
+  }, [data?.blocks]);
+}
+
 export function NotificationCenter() {
   const [notifications, setNotifications] = useState<SmartNotification[]>([]);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [trayOpen, setTrayOpen] = useState(false);
 
   useHydrationReminders();
+  useSessionReminders();
+
+  useEffect(() => startDocumentTitleTimer(), []);
 
   useEffect(() => {
     // Read after mount on purpose. A lazy useState initialiser would read

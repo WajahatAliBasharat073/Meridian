@@ -7,11 +7,14 @@
  * countdown on Today.
  *
  * A route is keyed on `TimeBlock.category` (the real values are declared
- * once in lib/category.ts). One category can hold two kinds of work --
- * "InterviewPrep" covers both DSA practice and ML/GenAI study, distinguished
- * only by the block's free-text `activity` -- so a route may add
+ * once in lib/category.ts). Two categories hold more than one kind of
+ * work, distinguished only by the block's free-text `activity`:
+ * "InterviewPrep" covers both DSA practice and ML/GenAI study, and
+ * "English" covers both grammar and vocabulary. A route may add
  * `activityIncludes` (matched case-insensitively) to pick a more specific
- * destination before falling back to that category's default route.
+ * destination before falling back to that category's default route --
+ * or, if there's no default (English has none), an unmatched activity
+ * resolves to null rather than being routed to the wrong page.
  *
  * To add a new destination later: add one object to FOCUS_ROUTES. Nothing
  * else in this file, and nothing in ActivityController, needs to change.
@@ -27,42 +30,45 @@ export interface FocusRoute {
   label: string;
 }
 
-// DSA-flavoured activity text under the shared "InterviewPrep" category --
-// drawn from the DSA module's own pattern list (Module A's submodules:
-// arrays/hashing, two pointers, sliding window, stack, binary search,
-// linked lists, intervals, trees, tries/heaps, backtracking, graphs, DP,
-// math/geometry/bit manipulation) plus the obvious generic terms.
-const DSA_ACTIVITY_MARKERS = [
-  "dsa",
-  "leetcode",
-  "two pointer",
-  "sliding window",
-  "binary search",
-  "linked list",
-  "backtrack",
-  "dynamic programming",
-  "greedy",
-  "graph",
-  "tree",
-  "heap",
-  "trie",
-  "stack",
-  "bit manipulation",
-  "array",
-  "hashing",
-];
+// The real schedule (scripts/restructure_workday.py) only ever produces
+// two InterviewPrep tracks, and names them consistently: "... — Coding"
+// (today's scheduled DSA problem + review queue) and "... — Theory" (one
+// ML/GenAI curriculum module, sometimes suffixed with the specific topic,
+// e.g. "Theory: ML System Design" or "Theory (part 2)"). A prior version
+// of this file tried to detect DSA by matching topic keywords
+// (sliding window, graph, etc.) against the activity text, but the real
+// blocks never contain those words at all -- only "Coding" or "Theory"
+// -- so every Coding block silently fell through to the ML fallback.
+// Matching on "Theory" instead, and making DSA the InterviewPrep default,
+// covers every activity string the real schedule actually produces:
+// "Coding", "Coding (part N)", "Theory", "Theory (part N)",
+// "Theory: <topic>", and "Timed Mock + Weak-Pattern Review" (a DSA
+// review session, not ML theory).
+const ML_THEORY_ACTIVITY_MARKERS = ["theory"];
+
+// "English" also covers two distinct tracks since the schedule split
+// English into grammar + vocabulary ("📚 English Grammar Learning" vs.
+// "📚 English Vocabulary") -- only vocabulary has a page in the app so
+// far, so a Grammar block correctly resolves to null (no destination,
+// not a misroute to the vocabulary page) until a grammar page exists.
+const VOCABULARY_ACTIVITY_MARKERS = ["vocabulary"];
 
 export const FOCUS_ROUTES: FocusRoute[] = [
   { category: "Thesis", destination: "/research", label: "Thesis & Research" },
-  { category: "English", destination: "/vocabulary", label: "English Vocabulary" },
+  {
+    category: "English",
+    activityIncludes: VOCABULARY_ACTIVITY_MARKERS,
+    destination: "/vocabulary",
+    label: "English Vocabulary",
+  },
   { category: "Reading", destination: "/reading", label: "Reading Log" },
   {
     category: "InterviewPrep",
-    activityIncludes: DSA_ACTIVITY_MARKERS,
-    destination: "/problems",
-    label: "DSA Prep",
+    activityIncludes: ML_THEORY_ACTIVITY_MARKERS,
+    destination: "/concepts",
+    label: "AI & ML",
   },
-  { category: "InterviewPrep", destination: "/concepts", label: "AI & ML" },
+  { category: "InterviewPrep", destination: "/problems", label: "DSA Prep" },
   // Example of extending this later without touching the Focus button:
   // { category: "SystemDesign", destination: "/system-design", label: "System Design" },
 ];

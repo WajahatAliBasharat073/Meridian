@@ -162,7 +162,7 @@ export function SoundSettingsSection() {
                 onChange={(e) => updateNotif({ activityReminders: e.target.checked })}
                 className="rounded border-border"
               />
-              <span className="text-text">Activity start (10 min before & start)</span>
+              <span className="text-text">Activity start (5 min before, at start, and a nudge if unstarted)</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-surface-2/60 hover:bg-surface-2">
               <input

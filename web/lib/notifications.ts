@@ -4,11 +4,13 @@
  * plays notification sounds, and logs behavioral events.
  */
 
+import { sendOsNotification } from "./osNotifications";
 import { playSound, type SoundType } from "./soundEngine";
 
 export type NotificationKind =
   | "activity_pre"
   | "activity_start"
+  | "activity_nudge"
   | "activity_complete"
   | "hydration"
   | "meal"
@@ -158,6 +160,12 @@ export function pushNotification(
 
   // Play sound
   playSound(fullNotification.soundType);
+
+  // Real OS-level delivery (Windows Action Center / macOS Notification
+  // Center / ...) alongside the in-app toast above, so this reaches you
+  // outside the tab -- see lib/osNotifications.ts for what that can and
+  // can't do. A no-op if permission was never granted.
+  sendOsNotification(fullNotification.title, fullNotification.body);
 
   // Log behavioral event
   logBehavioralEvent("notification_displayed", fullNotification.id, {

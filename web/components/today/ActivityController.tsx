@@ -35,6 +35,7 @@ import {
 import { useMarkBlockStatus } from "@/hooks/useMutations";
 import { resolveFocusDestination } from "@/lib/focusRouting";
 import { pushNotification } from "@/lib/notifications";
+import { isPipSupported, openFocusPipWindow } from "@/lib/pipTimer";
 import { playSound } from "@/lib/soundEngine";
 import type { TimeBlockOut } from "@/lib/types";
 
@@ -151,6 +152,10 @@ export function ActivityController({
                     upcomingBlock.planned_minutes,
                     timeStringToMinutes(upcomingBlock.end)
                   );
+                  // Must be called directly from this click handler (no
+                  // prior await) -- the Picture-in-Picture API requires
+                  // the still-live user gesture.
+                  void openFocusPipWindow();
                   // The timer is global (lib/activityStore), so navigating
                   // away doesn't stop or lose it -- coming back to Today
                   // later still shows it running.
@@ -238,6 +243,9 @@ export function ActivityController({
     if (locked) return;
     const endMinutes = parseInt(block.end.split(":")[0], 10) * 60 + parseInt(block.end.split(":")[1], 10);
     startActivitySession(block.id, block.activity, block.category, block.planned_minutes, endMinutes);
+    // Must be called directly from this click handler (no prior await) --
+    // the Picture-in-Picture API requires the still-live user gesture.
+    void openFocusPipWindow();
     pushNotification({
       kind: "activity_start",
       title: block.activity,
@@ -467,6 +475,17 @@ export function ActivityController({
               >
                 +15m
               </Button>
+              {isPipSupported() && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void openFocusPipWindow()}
+                  title="Pop out a floating timer that stays on top of other windows"
+                  className="text-xs text-text-faint hover:text-text"
+                >
+                  Pop out timer
+                </Button>
+              )}
             </>
           ) : (
             <>
