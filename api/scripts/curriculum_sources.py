@@ -28,6 +28,7 @@ you can open, rather than an assertion that "Meta asks this".
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from scripts.ingest_curriculum import EXTERNAL, QRecord, _strip_md
 
@@ -300,12 +301,37 @@ KH_SECTION_MAP: dict[str, tuple[str, str, str]] = {
 }
 
 
+def _capitalize_first(text: str) -> str:
+    """"how to handle X" -> "How to handle X". The source repo doesn't
+    consistently capitalize its numbered items; a question prompt should."""
+    return text[0].upper() + text[1:] if text else text
+
+
 def parse_khangich_questions() -> list[QRecord]:
     """Numbered questions, with their lettered sub-parts as follow-ups.
 
     The source interleaves answers into the question text ("50. what is
     cross-validation: the purpose is to estimate..."). We keep only the
     part before the first colon-answer so the prompt stays a prompt.
+
+    A numbered item's own text sometimes soft-wraps onto plain
+    (unnumbered, unlettered) lines below it -- e.g. #21 "Assumptions
+    about linear regression: 3 residual errors follow a normal
+    distribution and" continues on the next two lines with "independent
+    with each other, ...". Those continuation lines are gathered and
+    joined *before* the answer-split below runs, so the split still sees
+    the whole sentence and only cuts where an actual answer begins
+    (a real "lowercase-then-period/colon, capital" transition), rather
+    than truncating at whatever line happened to wrap first.
+
+    Two more source quirks handled explicitly: a discarded remainder that
+    itself reads as a question (ends in "?") is kept as a follow-up
+    rather than assumed to be an answer (#63 "Explain RNN Problem. How
+    does LSTM help solve it?"), and the one line that's simply broken in
+    the source itself with no way to complete it honestly (#33,
+    "generative v.s.", cut off mid-word) is dropped outright rather than
+    imported as a half sentence -- a complete version of that same
+    question already exists via a different source.
     """
     path = KHANGICH / "questions.md"
     if not path.exists():
@@ -313,56 +339,108 @@ def parse_khangich_questions() -> list[QRecord]:
     lines = path.read_text(encoding="utf-8").splitlines()
     url = f"{KH_BLOB}/questions.md"
 
-    out: list[QRecord] = []
+    @dataclass
+    class _RawItem:
+        section: tuple[str, str, str]
+        body_lines: list[str]
+        # Each sub-item is its own list of wrapped-line fragments (usually
+        # just one), not a flat list of sub-items -- a lettered sub-part
+        # can itself soft-wrap (e.g. #43d), and that continuation belongs
+        # to the sub-item, not back to the main title.
+        sub_line_groups: list[list[str]]
+
+    items: list[_RawItem] = []
     section: tuple[str, str, str] | None = None
-    pending: QRecord | None = None
+    current: _RawItem | None = None
 
     for line in lines:
         h = re.match(r"^##\s+(.*)", line)
         if h:
             section = KH_SECTION_MAP.get(h.group(1).strip())
-            pending = None
+            current = None
             continue
         if section is None:
             continue
 
         numbered = re.match(r"^(\d+)\.\s+(.*)", line)
         if numbered:
-            body = _strip_md(numbered.group(2))
-            # Drop the appended answer: "Explain X: it is ..." keeps "Explain X".
-            body = re.split(r"(?<=[a-z\)])[:.]\s+[A-Z]", body)[0].strip(" .:")
-            if len(body) < 8:
-                pending = None
-                continue
-            module, submodule, category = section
-            pending = QRecord(
-                category=category,
-                title=body if body.endswith("?") else f"{body}?" if body.lower().startswith(
-                    ("what", "how", "why", "when", "which", "is ", "are ", "can ", "do ")
-                ) else body,
-                source="khangich/machine-learning-interview",
-                module_code=module,
-                submodule=submodule,
-                question_type="concept",
-                difficulty="intermediate",
-                seniority="mid",
-                priority="P0",
-                frequency="high",
-                # The repo is a curated aggregation, not a per-question
-                # candidate report, so this is `common`, not `reported`.
-                evidence="common",
-                source_url=url,
-                tests_for="Whether the concept is understood rather than memorised — the "
-                "sub-questions below are where a recited definition runs out.",
-            )
-            out.append(pending)
+            current = _RawItem(section=section, body_lines=[numbered.group(2)], sub_line_groups=[])
+            items.append(current)
             continue
 
         sub = re.match(r"^\s*([a-z]|[ivx]+)\.\s+(.*)", line)
-        if sub and pending is not None:
-            follow = _strip_md(sub.group(2))
+        if sub and current is not None:
+            current.sub_line_groups.append([sub.group(2)])
+            continue
+
+        if current is not None and line.strip():
+            # A plain continuation line -- wraps whichever came most
+            # recently: the last sub-item if we're past the main line,
+            # otherwise the main title itself.
+            target = current.sub_line_groups[-1] if current.sub_line_groups else current.body_lines
+            target.append(line.strip())
+
+    out: list[QRecord] = []
+    for item in items:
+        raw_body = _strip_md(" ".join(item.body_lines))
+
+        # "33. general ML questions like generative v.s." -- the source
+        # line itself stops mid-word (presumably "v.s. discriminative
+        # models", never finished). There's nothing to join or split
+        # here; it's just broken, and a complete version of the same
+        # question already exists (questions_data.py, "Distinguish
+        # discriminative and generative models..."), so this fragment is
+        # dropped rather than imported as a half sentence.
+        if raw_body.rstrip(". ").lower().endswith("generative v.s"):
+            continue
+
+        # Drop the appended answer: "Explain X: it is ..." keeps "Explain
+        # X". But the discarded remainder isn't always an answer -- "63.
+        # Explain RNN Problem. How does LSTM help solve it?" splits on
+        # "Problem. How" the same way, and that remainder is a genuine
+        # second question, not an explanation. When it reads like one
+        # (ends with "?"), keep it as a follow-up instead of discarding it.
+        parts = re.split(r"(?<=[a-z\)])[:.]\s+[A-Z]", raw_body, maxsplit=1)
+        body = parts[0].strip(" .:")
+        if len(body) < 8:
+            continue
+        leftover_follow_up: str | None = None
+        if len(parts) > 1:
+            # re.split's pattern is non-capturing, so the capital letter
+            # that started this remainder was consumed by the match --
+            # recover it from the original text at the split boundary.
+            leftover = raw_body[len(parts[0]):].lstrip(" .:")
+            if leftover.endswith("?") and len(leftover) > 4:
+                leftover_follow_up = leftover
+        body = _capitalize_first(body)
+        module, submodule, category = item.section
+        record = QRecord(
+            category=category,
+            title=body if body.endswith("?") else f"{body}?" if body.lower().startswith(
+                ("what", "how", "why", "when", "which", "is ", "are ", "can ", "do ")
+            ) else body,
+            source="khangich/machine-learning-interview",
+            module_code=module,
+            submodule=submodule,
+            question_type="concept",
+            difficulty="intermediate",
+            seniority="mid",
+            priority="P0",
+            frequency="high",
+            # The repo is a curated aggregation, not a per-question
+            # candidate report, so this is `common`, not `reported`.
+            evidence="common",
+            source_url=url,
+            tests_for="Whether the concept is understood rather than memorised — the "
+            "sub-questions below are where a recited definition runs out.",
+        )
+        if leftover_follow_up:
+            record.follow_ups.append(_capitalize_first(leftover_follow_up))
+        for group in item.sub_line_groups:
+            follow = _capitalize_first(_strip_md(" ".join(group)))
             if len(follow) > 4:
-                pending.follow_ups.append(follow)
+                record.follow_ups.append(follow)
+        out.append(record)
 
     return out
 
