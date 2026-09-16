@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatClock, remainingSeconds } from "./focusTimerDisplay";
+import { formatClock, progressFraction, remainingSeconds } from "./focusTimerDisplay";
 import type { ActiveSession } from "./activityStore";
 
 function session(overrides: Partial<ActiveSession> = {}): ActiveSession {
@@ -54,5 +54,28 @@ describe("remainingSeconds", () => {
     const s = session({ targetEndMinutes: 900, startTime: Date.now() - 999_000 });
     expect(remainingSeconds(s, 895)).toBe(remainingSeconds(s, 895));
     expect(remainingSeconds(s, 895)).toBe(300);
+  });
+});
+
+describe("progressFraction", () => {
+  it("is 0 right at the start of the scheduled window", () => {
+    const s = session({ plannedMinutes: 60, targetEndMinutes: 900 }); // window: 14:00-15:00
+    expect(progressFraction(s, 840)).toBe(0);
+  });
+
+  it("is 0.5 halfway through", () => {
+    const s = session({ plannedMinutes: 60, targetEndMinutes: 900 });
+    expect(progressFraction(s, 870)).toBeCloseTo(0.5);
+  });
+
+  it("holds at 1 once the window is overrun, rather than exceeding it", () => {
+    const s = session({ plannedMinutes: 60, targetEndMinutes: 900 });
+    expect(progressFraction(s, 900)).toBe(1);
+    expect(progressFraction(s, 930)).toBe(1);
+  });
+
+  it("grows with an extension (plannedMinutes increases) exactly like the Today progress bar", () => {
+    const extended = session({ plannedMinutes: 75, targetEndMinutes: 915 }); // +15m
+    expect(progressFraction(extended, 900)).toBeCloseTo(0.8); // 60 of 75 minutes in
   });
 });

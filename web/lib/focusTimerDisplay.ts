@@ -11,6 +11,18 @@ export function remainingSeconds(session: ActiveSession, nowMinutesInDay: number
   return Math.round((session.targetEndMinutes - nowMinutesInDay) * 60);
 }
 
+/** How far through the scheduled window [0, 1] we are right now, matching
+ * ActivityController's own progress-bar rule: progress is against the
+ * *scheduled* window (plannedMinutes, extended if the session was
+ * extended), not against work actually logged, and it holds at 1 rather
+ * than continuing past it once the window is overrun. */
+export function progressFraction(session: ActiveSession, nowMinutesInDay: number): number {
+  const windowSec = Math.max(1, session.plannedMinutes * 60);
+  const remaining = remainingSeconds(session, nowMinutesInDay);
+  const elapsed = windowSec - Math.max(0, remaining);
+  return Math.min(1, Math.max(0, elapsed / windowSec));
+}
+
 /** "12:34" (or "1:02:34" past an hour). A negative input is clamped to 0 --
  * callers that need to show overtime separately check the sign themselves
  * before formatting the absolute value. */
