@@ -108,6 +108,11 @@ export function ActivityController({
     if (upcomingBlock) {
       const { icon: UpIcon, colorVar: upColor } = categoryMeta(upcomingBlock.category);
       const upcomingLocked = isBlockLocked(upcomingBlock, nowMinutesInKarachi());
+      // Same single-active-session rule as the main card below: a session
+      // already running for a different block blocks starting this one
+      // too, until it's paused or finished.
+      const anotherSessionRunning =
+        session !== null && session.state === "in_progress" && session.blockId !== upcomingBlock.id;
       return (
         <Card className="p-5 border border-border bg-surface/70 backdrop-blur-sm shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -141,6 +146,12 @@ export function ActivityController({
               >
                 <Lock size={13} /> Locked — too late to start
               </span>
+            ) : anotherSessionRunning ? (
+              <OtherSessionControls
+                session={session}
+                onPause={() => pauseActiveSession()}
+                onDiscard={() => skipActiveSession("Abandoned to start a different session")}
+              />
             ) : (
               <Button
                 size="sm"
@@ -192,6 +203,12 @@ export function ActivityController({
   const { icon: Icon, colorVar } = categoryMeta(block.category);
   const isPrayer = block.category === "Prayer";
   const isBlockActive = session && session.blockId === block.id;
+  // Only one live session at a time, app-wide -- a session already
+  // running for a different block blocks starting this one too, until
+  // it's paused or finished. Paused is deliberately not blocking: that's
+  // the explicit "stepping away" signal that should free things back up.
+  const anotherSessionRunning =
+    session !== null && session.state === "in_progress" && !isBlockActive;
 
   // The headline countdown is always "how long until this block's
   // scheduled end", never "planned duration from when Focus was pressed".
@@ -238,9 +255,10 @@ export function ActivityController({
 
   const handleStart = () => {
     // Defensive: the button dispatching this is already disabled while
-    // locked, but a click that lands right at the boundary (or an
-    // untrusted DOM event) shouldn't reach the store at all.
-    if (locked) return;
+    // locked or while another session is running, but a click that lands
+    // right at the boundary (or an untrusted DOM event) shouldn't reach
+    // the store at all.
+    if (locked || anotherSessionRunning) return;
     const endMinutes = parseInt(block.end.split(":")[0], 10) * 60 + parseInt(block.end.split(":")[1], 10);
     startActivitySession(block.id, block.activity, block.category, block.planned_minutes, endMinutes);
     // Must be called directly from this click handler (no prior await) --
@@ -281,16 +299,29 @@ export function ActivityController({
     setShowRatingModal(true);
   };
 
+  // Completing a session running for a *different* block than the one
+  // this card is currently showing (see anotherSessionRunning below) --
+  // no lock/too-early guard applies, since those are about this card's
+  // own scheduled window, not the other block's.
+  const handleCompleteOtherSessionClick = () => setShowRatingModal(true);
+
   const confirmComplete = () => {
     const result = completeActiveSession(focusRating, sessionNotes);
+    // Always the session actually being completed, not necessarily this
+    // card's own block -- completeActiveSession returns the exact session
+    // it just closed out, which is the reliable source of which block to
+    // credit whether this card's Complete button was used or the "other
+    // running session" one was.
+    const targetBlockId = result?.session.blockId ?? block.id;
+    const targetActivity = result?.session.activity ?? block.activity;
     const actual = result ? result.actualMinutes : block.planned_minutes;
-    mark.mutate({ blockId: block.id, status: "DONE", actualMinutes: actual });
+    mark.mutate({ blockId: targetBlockId, status: "DONE", actualMinutes: actual });
     pushNotification({
       kind: "activity_complete",
       title: "Activity Complete",
-      body: `✓ ${block.activity} — ${actual} focused minutes logged`,
+      body: `✓ ${targetActivity} — ${actual} focused minutes logged`,
       soundType: "completion",
-      activityId: block.id,
+      activityId: targetBlockId,
     });
     setShowRatingModal(false);
   };
@@ -298,6 +329,16 @@ export function ActivityController({
   const handleSkip = () => {
     skipActiveSession("User skipped");
     mark.mutate({ blockId: block.id, status: "NOT DONE" });
+  };
+
+  // Clears a session running for a *different*, already-out-of-view block
+  // (its own scheduled window has passed, or it was separately marked
+  // DONE/NOT DONE via the Timeline row) -- deliberately does not touch
+  // that block's status via `mark`, unlike handleSkip: the block's status
+  // is whatever the user already set it to through the Timeline, and
+  // "discard this stray timer" shouldn't second-guess that.
+  const handleDiscardOtherSession = () => {
+    skipActiveSession("Abandoned to start a different session");
   };
 
   return (
@@ -422,15 +463,24 @@ export function ActivityController({
               </span>
             ) : (
               <>
-                <Button
-                  variant="primary"
-                  size="md"
-                  onClick={handleStart}
-                  className="gap-2 shadow-sm font-semibold"
-                >
-                  <Play size={15} className="fill-current" />
-                  Start Activity
-                </Button>
+                {anotherSessionRunning ? (
+                  <OtherSessionControls
+                    session={session}
+                    onPause={handlePause}
+                    onComplete={handleCompleteOtherSessionClick}
+                    onDiscard={handleDiscardOtherSession}
+                  />
+                ) : (
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={handleStart}
+                    className="gap-2 shadow-sm font-semibold"
+                  >
+                    <Play size={15} className="fill-current" />
+                    Start Activity
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   size="md"
@@ -582,5 +632,57 @@ export function ActivityController({
         </div>
       )}
     </Card>
+  );
+}
+
+/** Shown in place of a Start/Focus button whenever the block this card is
+ * displaying isn't the one actually running -- gives real Pause/Complete/
+ * Discard controls for *that* session right here, since its own block may
+ * no longer be "current" (its scheduled window passed) or even visible as
+ * NOT DONE (Timeline hides Focus controls once a block is marked DONE),
+ * leaving no other way to reach it. Without this, a session left running
+ * past its window silently blocks starting anything else with no way out. */
+function OtherSessionControls({
+  session,
+  onPause,
+  onComplete,
+  onDiscard,
+}: {
+  session: ActiveSession | null;
+  onPause: () => void;
+  // Omitted where there's no rating modal in scope to open (the
+  // "upcoming block" card returns before that modal's JSX would ever
+  // render) -- Pause and Discard alone are still a real way out there.
+  onComplete?: () => void;
+  onDiscard: () => void;
+}) {
+  if (!session) return null;
+  return (
+    <div className="flex items-center gap-2 flex-wrap rounded-lg border border-border bg-surface-2/60 px-3 py-2 w-full">
+      <span className="text-xs text-text-muted min-w-0 truncate">
+        <span className="font-medium text-text">{session.activity}</span> is still running
+      </span>
+      <div className="flex items-center gap-1.5 ml-auto shrink-0">
+        <Button variant="secondary" size="sm" onClick={onPause} className="gap-1.5">
+          <Pause size={12} />
+          Pause
+        </Button>
+        {onComplete && (
+          <Button variant="secondary" size="sm" onClick={onComplete} className="gap-1.5">
+            <Check size={12} />
+            Complete
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onDiscard}
+          title="Clear this session without saving progress or changing the block's status"
+          className="text-text-faint hover:text-danger"
+        >
+          Discard
+        </Button>
+      </div>
+    </div>
   );
 }

@@ -137,3 +137,23 @@ body {
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
+
+/* A notification's "go to it" link lands on /today#block-<id> -- this
+   highlights that row purely from the URL hash matching its id, with no
+   JS-driven highlight state needed (components/today/Timeline.tsx still
+   does the actual scrollIntoView by hand, since pushState-driven hash
+   changes don't trigger the browser's native anchor-scroll). */
+.timeline-row:target {
+  animation: target-flash 2.2s ease-out;
+}
+
+@keyframes target-flash {
+  0%, 15% {
+    background-color: color-mix(in srgb, var(--accent) 22%, transparent);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}

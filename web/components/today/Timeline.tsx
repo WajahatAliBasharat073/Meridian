@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronDown, Lock, Play, RotateCcw, Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,10 @@ import { categoryMeta } from "@/lib/category";
 import { EARLY_COMPLETION_MESSAGE, isBlockLocked, isTooEarlyToComplete, LOCK_MESSAGE } from "@/lib/blockLock";
 import { formatTime12h, timeStringToMinutes } from "@/lib/time";
 import { useMarkBlockStatus } from "@/hooks/useMutations";
-import { startActivitySession } from "@/lib/activityStore";
+import { startActivitySession, subscribeActiveSession, type ActiveSession } from "@/lib/activityStore";
 import type { BlockStatus, TimeBlockOut } from "@/lib/types";
+
+const FOCUS_LOCKED_MESSAGE = "Finish or pause the current session first";
 
 const STATUS_STYLE: Record<BlockStatus, { bg: string; fg: string; label: string }> = {
   DONE: { bg: "var(--status-done)", fg: "var(--status-done)", label: "Done" },
@@ -48,7 +50,15 @@ const PHASE_LABELS: Record<string, { title: string; subtitle: string; icon: stri
   night: { title: "Night Routine & Recovery", subtitle: "20:40 – 22:15 · Dinner, English Vocab, Reading & Sleep Shutdown", icon: "🌙" },
 };
 
-function Row({ block, nowMinutes }: { block: TimeBlockOut; nowMinutes: number }) {
+function Row({
+  block,
+  nowMinutes,
+  activeSession,
+}: {
+  block: TimeBlockOut;
+  nowMinutes: number;
+  activeSession: ActiveSession | null;
+}) {
   const [expanded, setExpanded] = useState(false);
   const mark = useMarkBlockStatus();
   const { icon: Icon, colorVar } = categoryMeta(block.category);
@@ -63,6 +73,18 @@ function Row({ block, nowMinutes }: { block: TimeBlockOut; nowMinutes: number })
   const wasRejectedByGuard =
     mark.isError && mark.error instanceof ApiError && mark.error.status === 423;
 
+  // Only one live session at a time, app-wide (lib/activityStore is a
+  // single global slot) -- so once a block is actually running, both its
+  // own Focus button (no double-start) and every *other* block's Focus
+  // button (no accidental jump to a different session) are disabled
+  // until that session is paused, completed, or abandoned. Paused is
+  // deliberately the escape hatch, not a blocking state: pausing is the
+  // explicit "I'm stepping away" signal that should free the timeline
+  // back up.
+  const thisBlockRunning = activeSession?.blockId === block.id && activeSession.state === "in_progress";
+  const anotherBlockRunning =
+    activeSession !== null && activeSession.state === "in_progress" && activeSession.blockId !== block.id;
+
   const setStatus = (status: BlockStatus, actualMinutes?: number) => {
     mark.mutate({ blockId: block.id, status, actualMinutes });
     setExpanded(false);
@@ -71,6 +93,7 @@ function Row({ block, nowMinutes }: { block: TimeBlockOut; nowMinutes: number })
   const primaryTap = () => setStatus(block.status === "DONE" ? "NOT DONE" : "DONE");
 
   const handleStartFocus = () => {
+    if (thisBlockRunning || anotherBlockRunning) return;
     startActivitySession(
       block.id,
       block.activity,
@@ -82,8 +105,9 @@ function Row({ block, nowMinutes }: { block: TimeBlockOut; nowMinutes: number })
 
   return (
     <li
+      id={`block-${block.id}`}
       className={cn(
-        "transition-colors",
+        "timeline-row scroll-mt-24 transition-colors",
         block.is_current ? "bg-accent-soft/50 border-l-2 border-l-accent" : "hover:bg-surface-2/40"
       )}
     >
@@ -143,13 +167,24 @@ function Row({ block, nowMinutes }: { block: TimeBlockOut; nowMinutes: number })
 
         {/* Action Controls */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {block.status === "NOT DONE" && !locked && (
+          {block.status === "NOT DONE" && !locked && thisBlockRunning && (
+            <span
+              className="h-8 px-2.5 rounded-lg border border-accent/40 bg-accent-soft flex items-center gap-1.5 text-[11px] font-semibold text-accent-strong shrink-0"
+              title="Session running -- pause it to start another"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-accent-strong animate-pulse" />
+              <span className="hidden sm:inline">Running</span>
+            </span>
+          )}
+
+          {block.status === "NOT DONE" && !locked && !thisBlockRunning && (
             <Button
               variant="ghost"
               size="sm"
               onClick={handleStartFocus}
+              disabled={anotherBlockRunning}
               className="h-8 px-2.5 text-xs gap-1 text-accent-strong hover:bg-accent-soft"
-              title="Start live focus session"
+              title={anotherBlockRunning ? FOCUS_LOCKED_MESSAGE : "Start live focus session"}
             >
               <Play size={12} fill="currentColor" />
               <span className="hidden sm:inline">Focus</span>
@@ -236,6 +271,36 @@ function Row({ block, nowMinutes }: { block: TimeBlockOut; nowMinutes: number })
 
 export function Timeline({ blocks, nowMinutes }: { blocks: TimeBlockOut[]; nowMinutes: number }) {
   const [filter, setFilter] = useState<"all" | "morning" | "job" | "prep" | "night">("all");
+  // One subscription for the whole list rather than one per Row -- every
+  // row needs to know about the single global active session to decide
+  // whether its own Focus button should be disabled.
+  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+  useEffect(() => subscribeActiveSession(setActiveSession), []);
+
+  // A notification's "go to it" link lands here as /today#block-<id> --
+  // scroll to that row. history.pushState-driven hash changes (what the
+  // router does) don't trigger the browser's native anchor-scroll the
+  // way clicking a real <a href="#..."> does, so this does it by hand.
+  // The highlight itself needs no state at all: .timeline-row:target in
+  // globals.css matches purely off the URL hash.
+  useEffect(() => {
+    const scrollToHash = () => {
+      const hash = window.location.hash;
+      if (!hash.startsWith("#block-")) return;
+      const el = document.getElementById(hash.slice(1));
+      if (!el) {
+        // Not rendered under the current phase filter -- switch to "All
+        // Day" so it's guaranteed to exist, then this effect re-runs
+        // (filter is a dependency) and finds it on the retry.
+        setFilter("all");
+        return;
+      }
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+    scrollToHash();
+    window.addEventListener("hashchange", scrollToHash);
+    return () => window.removeEventListener("hashchange", scrollToHash);
+  }, [filter, blocks]);
 
   const phases = useMemo(() => {
     const map = {
@@ -334,7 +399,7 @@ export function Timeline({ blocks, nowMinutes }: { blocks: TimeBlockOut[]; nowMi
                 </div>
                 <ul className="divide-y divide-border">
                   {phaseBlocks.map((b) => (
-                    <Row key={b.id} block={b} nowMinutes={nowMinutes} />
+                    <Row key={b.id} block={b} nowMinutes={nowMinutes} activeSession={activeSession} />
                   ))}
                 </ul>
               </div>
@@ -352,7 +417,7 @@ export function Timeline({ blocks, nowMinutes }: { blocks: TimeBlockOut[]; nowMi
           </div>
           <ul className="divide-y divide-border">
             {displayedBlocks.map((b) => (
-              <Row key={b.id} block={b} nowMinutes={nowMinutes} />
+              <Row key={b.id} block={b} nowMinutes={nowMinutes} activeSession={activeSession} />
             ))}
           </ul>
         </div>

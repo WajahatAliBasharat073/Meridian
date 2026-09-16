@@ -94,6 +94,33 @@ function notifyListeners() {
   listeners.forEach((fn) => fn(current));
 }
 
+// Whether the full-history tray is open -- shared module state, not
+// per-component: NotificationBellButton (mounted in TopNav) and
+// NotificationCenter (mounted once at the AppShell root, owning the tray
+// itself) are two separate component instances with no other link
+// between them, so a plain useState in NotificationCenter alone left the
+// bell with nothing to actually open.
+type TrayListener = (open: boolean) => void;
+const trayListeners: Set<TrayListener> = new Set();
+let trayOpenState = false;
+
+export function subscribeTrayOpen(listener: TrayListener): () => void {
+  trayListeners.add(listener);
+  listener(trayOpenState);
+  return () => {
+    trayListeners.delete(listener);
+  };
+}
+
+export function setTrayOpen(open: boolean): void {
+  trayOpenState = open;
+  trayListeners.forEach((fn) => fn(open));
+}
+
+export function toggleTray(): void {
+  setTrayOpen(!trayOpenState);
+}
+
 export function getNotificationSettings(): NotificationSettings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
   try {
@@ -186,6 +213,22 @@ export function dismissNotification(id: string): void {
   const updated = current.filter((n) => n.id !== id);
   try {
     localStorage.setItem(NOTIFICATIONS_STORAGE, JSON.stringify(updated));
+  } catch {}
+  notifyListeners();
+}
+
+/** Clears every notification in one go -- the tray's "Clear all", for
+ * when there are more of these than anyone wants to dismiss one X at a
+ * time. Logs one `notification_dismissed` per notification, same as
+ * dismissing it individually, so the behavioral log doesn't gain a gap
+ * just because the user cleared them in bulk. */
+export function dismissAllNotifications(): void {
+  const current = getNotifications();
+  for (const n of current) {
+    logBehavioralEvent("notification_dismissed", n.id, { kind: n.kind, bulk: true }, Date.now() - n.timestamp);
+  }
+  try {
+    localStorage.setItem(NOTIFICATIONS_STORAGE, JSON.stringify([]));
   } catch {}
   notifyListeners();
 }
