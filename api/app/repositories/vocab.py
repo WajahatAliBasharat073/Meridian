@@ -64,6 +64,9 @@ async def create_word(
     paraphrase: str | None = None,
     dictionary_link: str | None = None,
     notes: str | None = None,
+    word_family: dict[str, str] | None = None,
+    collocations: list[str] | None = None,
+    common_mistake: str | None = None,
 ) -> VocabWord:
     row = VocabWord(
         user_id=user_id,
@@ -80,6 +83,9 @@ async def create_word(
         paraphrase=paraphrase,
         dictionary_link=dictionary_link,
         notes=notes,
+        word_family=word_family,
+        collocations=collocations,
+        common_mistake=common_mistake,
         date_introduced=date.today(),
         source="manual",
     )
@@ -213,6 +219,9 @@ async def upsert_oxford_word(
     word_patterns: str | None = None,
     paraphrase: str | None = None,
     dictionary_link: str | None = None,
+    word_family: dict[str, str] | None = None,
+    collocations: list[str] | None = None,
+    common_mistake: str | None = None,
 ) -> tuple[VocabWord, bool]:
     """Insert, or update in place if this exact (word, part_of_speech) row
     already exists for this user -- so re-running an Oxford importer
@@ -240,6 +249,12 @@ async def upsert_oxford_word(
             existing.paraphrase = paraphrase
         if dictionary_link and not existing.dictionary_link:
             existing.dictionary_link = dictionary_link
+        if word_family and not existing.word_family:
+            existing.word_family = word_family
+        if collocations and not existing.collocations:
+            existing.collocations = collocations
+        if common_mistake and not existing.common_mistake:
+            existing.common_mistake = common_mistake
         await session.commit()
         await session.refresh(existing)
         return existing, False
@@ -256,6 +271,9 @@ async def upsert_oxford_word(
         word_patterns=word_patterns,
         paraphrase=paraphrase,
         dictionary_link=dictionary_link,
+        word_family=word_family,
+        collocations=collocations,
+        common_mistake=common_mistake,
         date_introduced=date.today(),
         source="oxford_5000_import",
     )

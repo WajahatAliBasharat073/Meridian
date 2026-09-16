@@ -42,6 +42,9 @@ def _out(w: VocabWord) -> VocabWordOut:
         paraphrase=w.paraphrase,
         dictionary_link=w.dictionary_link,
         notes=w.notes,
+        word_family=w.word_family,
+        collocations=w.collocations,
+        common_mistake=w.common_mistake,
         date_introduced=w.date_introduced,
         learning_status=w.learning_status,
         source=w.source,
@@ -99,6 +102,9 @@ async def create_word(
         paraphrase=payload.paraphrase,
         dictionary_link=payload.dictionary_link,
         notes=payload.notes,
+        word_family=payload.word_family,
+        collocations=payload.collocations,
+        common_mistake=payload.common_mistake,
     )
     log.info("vocab_word_created", user_id=str(user_id), word_id=row.id)
     return _out(row)

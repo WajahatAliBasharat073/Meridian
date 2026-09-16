@@ -154,6 +154,67 @@ async def test_upsert_oxford_word_updates_level_and_backfills_empty_definition_o
     assert row.definition == "long narrow piece"  # never overwrites a definition that's already there
 
 
+async def test_create_word_round_trips_word_family_and_collocations(
+    user: tuple[AsyncSession, uuid.UUID],
+) -> None:
+    session, user_id = user
+    row = await vocab_repo.create_word(
+        session,
+        user_id,
+        "Achieve",
+        "to succeed in reaching a goal",
+        "She achieved her dream after years of hard work.",
+        None,
+        "verb",
+        None,
+        word_family={"noun": "achievement", "verb": "achieve", "adjective": "achievable"},
+        collocations=["achieve a goal", "achieve success", "achieve results"],
+        common_mistake='"achieve to" is wrong -- use "manage to" instead.',
+    )
+
+    assert row.word_family == {"noun": "achievement", "verb": "achieve", "adjective": "achievable"}
+    assert row.collocations == ["achieve a goal", "achieve success", "achieve results"]
+    assert row.common_mistake == '"achieve to" is wrong -- use "manage to" instead.'
+
+    fetched = await vocab_repo.find_by_word(session, user_id, "achieve")
+    assert fetched is not None
+    assert fetched.collocations == ["achieve a goal", "achieve success", "achieve results"]
+
+
+async def test_upsert_oxford_word_backfills_family_and_collocations_without_clobbering(
+    user: tuple[AsyncSession, uuid.UUID],
+) -> None:
+    session, user_id = user
+    row, created = await vocab_repo.upsert_oxford_word(
+        session,
+        user_id,
+        word="obtain",
+        part_of_speech="verb",
+        cefr_level="B2",
+        definition="to get something",
+        word_family={"verb": "obtain", "adjective": "obtainable"},
+    )
+    assert created is True
+    assert row.word_family == {"verb": "obtain", "adjective": "obtainable"}
+    assert row.collocations is None
+
+    row, created_again = await vocab_repo.upsert_oxford_word(
+        session,
+        user_id,
+        word="obtain",
+        part_of_speech="verb",
+        cefr_level="B2",
+        definition="to get something",
+        word_family={"verb": "obtain", "adjective": "different-value-should-not-apply"},
+        collocations=["obtain permission", "obtain a licence"],
+    )
+    assert created_again is False
+    # A gap (collocations was None) gets filled...
+    assert row.collocations == ["obtain permission", "obtain a licence"]
+    # ...but a field that already had a value is never clobbered by a later import.
+    assert row.word_family == {"verb": "obtain", "adjective": "obtainable"}
+
+
 async def test_update_word_edits_fields_and_can_clear_them(user: tuple[AsyncSession, uuid.UUID]) -> None:
     session, user_id = user
     row = await vocab_repo.create_word(

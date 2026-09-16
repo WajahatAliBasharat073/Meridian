@@ -87,10 +87,22 @@ class VocabWord(Base):
     word_patterns: Mapped[str | None] = mapped_column(Text, nullable=True)
     paraphrase: Mapped[str | None] = mapped_column(Text, nullable=True)
     dictionary_link: Mapped[str | None] = mapped_column(String, nullable=True)
+    # {"noun": "achievement", "verb": "achieve", "adjective": "achievable"} --
+    # only the forms that actually exist in common use are present as keys.
+    # One word's family effectively teaches 3-4 words for free.
+    word_family: Mapped[dict[str, str] | None] = mapped_column(JSONB, nullable=True)
+    # ["achieve a goal", "achieve success"] -- structured word partnerships,
+    # distinct from the free-text `word_patterns` (Oxford's bundled
+    # "patterns and collocations" export column). New rows can carry both.
+    collocations: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    # The one specific, predictable error learners make with this word
+    # (e.g. "achieve to" instead of "manage to") -- not a generic grammar
+    # rule. Sparse by design: most words won't have one worth recording.
+    common_mistake: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Freeform per-word notes the user writes themselves while reviewing --
     # distinct from `paraphrase` (a rephrasing of the definition) and
-    # `word_patterns` (collocations); this is just a blank space for
-    # whatever the user wants to remember about the word.
+    # `word_patterns`/`collocations` (natural usage); this is just a blank
+    # space for whatever the user wants to remember about the word.
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     date_introduced: Mapped[date_] = mapped_column()
     learning_status: Mapped[str | None] = mapped_column(String, nullable=True, index=True)

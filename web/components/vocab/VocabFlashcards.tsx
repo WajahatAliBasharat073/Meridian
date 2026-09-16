@@ -53,6 +53,57 @@ export function VocabFlashcards() {
   const daily = useDailyVocabReview(5);
   const all = useVocabWords();
 
+  // Today's 5 picks are frozen the moment they first load, and stay put --
+  // otherwise rating word #1 changes its learning_status, which changes
+  // its priority in build_daily_review, which reshuffles words #2-5 out
+  // from under the user mid-session. Only once every word in the current
+  // batch has been rated (ratedInBatch, updated from handleRate below)
+  // does the batch unfreeze and pick up whatever the server now ranks
+  // highest.
+  const [frozenDailyIds, setFrozenDailyIds] = useState<number[] | null>(null);
+  const [ratedInBatch, setRatedInBatch] = useState<Set<number>>(new Set());
+  const [batchGen, setBatchGen] = useState(0);
+
+  // Render-time state adjustment (React's documented alternative to an
+  // Effect for "derive state once from a value that just became
+  // available"): as soon as daily.data has words and nothing is frozen
+  // yet, freeze it. The `=== null` guard makes this a one-shot per batch
+  // -- freezing triggers an immediate re-render with frozenDailyIds set,
+  // so this body never runs twice for the same batch.
+  if (frozenDailyIds === null && daily.data && daily.data.length > 0) {
+    setFrozenDailyIds(daily.data.map((w) => w.id));
+    setBatchGen((g) => g + 1);
+  }
+
+  function handleRate(wordId: number, isRated: boolean) {
+    const next = new Set(ratedInBatch);
+    if (isRated) next.add(wordId);
+    else next.delete(wordId);
+    if (frozenDailyIds && next.size >= frozenDailyIds.length) {
+      // Whole batch rated -- unfreeze so the next render picks up a
+      // fresh top-5 now that these words' priorities have changed.
+      setFrozenDailyIds(null);
+      setRatedInBatch(new Set());
+    } else {
+      setRatedInBatch(next);
+    }
+  }
+
+  // Membership and order come from frozenDailyIds; the word *content*
+  // (learning_status badge, etc.) is always the freshest copy available,
+  // so rating a word still updates its own card immediately.
+  const dailyById = useMemo(() => {
+    const map = new Map<number, VocabWordOut>();
+    daily.data?.forEach((w) => map.set(w.id, w));
+    all.data?.forEach((w) => map.set(w.id, w));
+    return map;
+  }, [daily.data, all.data]);
+
+  const frozenDailyData = useMemo(() => {
+    if (!frozenDailyIds) return undefined;
+    return frozenDailyIds.map((id) => dailyById.get(id)).filter((w): w is VocabWordOut => !!w);
+  }, [frozenDailyIds, dailyById]);
+
   const browseData = useMemo(() => {
     if (!all.data) return all.data;
     let words = all.data;
@@ -62,7 +113,10 @@ export function VocabFlashcards() {
     return words;
   }, [all.data, statusFilter, levelFilter]);
 
-  const data = mode === "daily" ? daily.data : browseData;
+  // Falls back to the live (unfrozen) daily.data only when there's no
+  // batch to freeze yet -- still loading, or genuinely no words due --
+  // so the loading/empty states below behave exactly as before.
+  const data = mode === "daily" ? frozenDailyData ?? daily.data : browseData;
   const isLoading = mode === "daily" ? daily.isLoading : all.isLoading;
 
   return (
@@ -138,13 +192,23 @@ export function VocabFlashcards() {
       )}
 
       {data && data.length > 0 && (
-        <VocabFlashcardsLoaded key={`${mode}:${statusFilter}:${levelFilter}`} data={data} />
+        <VocabFlashcardsLoaded
+          key={mode === "daily" ? `daily:${batchGen}` : `browse:${statusFilter}:${levelFilter}`}
+          data={data}
+          onRate={mode === "daily" ? handleRate : undefined}
+        />
       )}
     </div>
   );
 }
 
-function VocabFlashcardsLoaded({ data }: { data: VocabWordOut[] }) {
+function VocabFlashcardsLoaded({
+  data,
+  onRate,
+}: {
+  data: VocabWordOut[];
+  onRate?: (wordId: number, isRated: boolean) => void;
+}) {
   const setStatus = useSetVocabWordStatus();
   const [index, setIndex] = useState(0);
   const current = data[Math.min(index, data.length - 1)];
@@ -191,6 +255,40 @@ function VocabFlashcardsLoaded({ data }: { data: VocabWordOut[] }) {
 
         <VocabWordDetailsPanel key={current.id} word={current} />
 
+        {(current.word_family || current.collocations?.length) && (
+          <div className="mt-4 space-y-2 text-left max-w-xl mx-auto text-sm">
+            {current.word_family && Object.keys(current.word_family).length > 0 && (
+              <p>
+                <span className="text-text-faint">Word family: </span>
+                <span className="text-text-muted">
+                  {Object.entries(current.word_family)
+                    .map(([pos, form]) => `${form} (${pos})`)
+                    .join(" · ")}
+                </span>
+              </p>
+            )}
+            {current.collocations && current.collocations.length > 0 && (
+              <div>
+                <span className="text-text-faint">Collocations: </span>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {current.collocations.map((phrase) => (
+                    <Badge key={phrase} color="var(--mastery-l4)">
+                      {phrase}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {current.common_mistake && (
+          <p className="mt-3 text-left max-w-xl mx-auto text-sm rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
+            <span className="text-danger font-medium">Common mistake: </span>
+            <span className="text-text-muted">{current.common_mistake}</span>
+          </p>
+        )}
+
         {(current.word_patterns || current.paraphrase) && (
           <div className="mt-4 space-y-1.5 text-left max-w-xl mx-auto text-sm">
             {current.word_patterns && (
@@ -227,15 +325,14 @@ function VocabFlashcardsLoaded({ data }: { data: VocabWordOut[] }) {
                 key={s}
                 type="button"
                 disabled={setStatus.isPending}
-                onClick={() =>
-                  setStatus.mutate({
-                    wordId: current.id,
-                    // Clicking the already-selected status clears it back
-                    // to unreviewed, matching the question bank's status
-                    // toggle -- a self-rating should be correctable.
-                    input: { learning_status: current.learning_status === s ? null : s },
-                  })
-                }
+                onClick={() => {
+                  // Clicking the already-selected status clears it back
+                  // to unreviewed, matching the question bank's status
+                  // toggle -- a self-rating should be correctable.
+                  const nextStatus = current.learning_status === s ? null : s;
+                  setStatus.mutate({ wordId: current.id, input: { learning_status: nextStatus } });
+                  onRate?.(current.id, nextStatus !== null);
+                }}
                 className={cn(
                   "h-9 px-3 rounded-md text-[12px] font-medium border transition-colors",
                   current.learning_status === s

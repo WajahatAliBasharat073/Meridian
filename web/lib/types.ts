@@ -1064,6 +1064,12 @@ export interface VocabWordOut {
   paraphrase: string | null;
   dictionary_link: string | null;
   notes: string | null;
+  /** e.g. {"noun": "achievement", "verb": "achieve", "adjective": "achievable"} --
+   * only forms that actually exist in common use are present as keys. */
+  word_family: Partial<Record<"noun" | "verb" | "adjective" | "adverb", string>> | null;
+  /** Short natural phrases, e.g. ["achieve a goal", "achieve success"]. */
+  collocations: string[] | null;
+  common_mistake: string | null;
   date_introduced: string;
   learning_status: VocabLearningStatus | null;
   source: string;
@@ -1083,6 +1089,9 @@ export interface VocabWordCreateInput {
   paraphrase?: string;
   dictionary_link?: string;
   notes?: string;
+  word_family?: Partial<Record<"noun" | "verb" | "adjective" | "adverb", string>>;
+  collocations?: string[];
+  common_mistake?: string;
 }
 
 export interface VocabWordUpdateInput {
@@ -1098,6 +1107,9 @@ export interface VocabWordUpdateInput {
   paraphrase?: string | null;
   dictionary_link?: string | null;
   notes?: string | null;
+  word_family?: Partial<Record<"noun" | "verb" | "adjective" | "adverb", string>> | null;
+  collocations?: string[] | null;
+  common_mistake?: string | null;
 }
 
 export interface VocabStatusUpdateInput {

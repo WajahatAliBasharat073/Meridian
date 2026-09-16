@@ -1240,6 +1240,9 @@ class VocabWordOut(BaseModel):
     paraphrase: str | None = None
     dictionary_link: str | None = None
     notes: str | None = None
+    word_family: dict[str, str] | None = None
+    collocations: list[str] | None = None
+    common_mistake: str | None = None
     date_introduced: DateOnly
     learning_status: VocabLearningStatus | None = None
     source: str
@@ -1259,6 +1262,9 @@ class VocabWordCreate(BaseModel):
     paraphrase: str | None = None
     dictionary_link: str | None = None
     notes: str | None = None
+    word_family: dict[str, str] | None = None
+    collocations: list[str] | None = None
+    common_mistake: str | None = None
 
 
 class VocabWordUpdate(BaseModel):
@@ -1274,6 +1280,9 @@ class VocabWordUpdate(BaseModel):
     paraphrase: str | None = None
     dictionary_link: str | None = None
     notes: str | None = None
+    word_family: dict[str, str] | None = None
+    collocations: list[str] | None = None
+    common_mistake: str | None = None
 
 
 class VocabStatusUpdate(BaseModel):
