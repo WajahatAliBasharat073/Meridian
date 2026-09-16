@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/ui/query-state";
+import { DsaChecklistPanel } from "@/components/problems/DsaChecklistPanel";
 import { ProblemRow, DIFFICULTY_COLOR } from "@/components/problems/ProblemRow";
 import { TopicGuideCard } from "@/components/problems/TopicGuideCard";
 import { GateBadge, VerifyTopicDialog } from "@/components/problems/VerifyTopicDialog";
@@ -165,6 +166,8 @@ export default function ProblemsPage() {
           onClose={() => setVerifying(null)}
         />
       )}
+
+      <DsaChecklistPanel />
     </PageContainer>
   );
 }
