@@ -1,13 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Filter, Lock } from "lucide-react";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/ui/query-state";
 import { ConceptDrill } from "@/components/problems/ConceptDrill";
@@ -17,7 +15,6 @@ import { TopicGuideCard } from "@/components/problems/TopicGuideCard";
 import { GateBadge } from "@/components/problems/GateBadge";
 import { TopicLearningLog } from "@/components/problems/TopicLearningLog";
 import { useProblemsByTopic } from "@/hooks/useProblems";
-import { overrideTopicGate } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { TopicSectionOut } from "@/lib/types";
 
@@ -174,15 +171,6 @@ function TopicSection({
   open: boolean;
   onToggle: () => void;
 }) {
-  const queryClient = useQueryClient();
-  const [confirmOverride, setConfirmOverride] = useState(false);
-  const override = useMutation({
-    mutationFn: (reason: string) => overrideTopicGate(section.topic, reason),
-    onSuccess: () => {
-      setConfirmOverride(false);
-      void queryClient.invalidateQueries({ queryKey: ["problems-by-topic"] });
-    },
-  });
   const gate = section.gate;
   const locked = gate != null && !gate.problems_visible;
   const shown = useMemo(() => {
@@ -295,40 +283,8 @@ function TopicSection({
               <p className="text-xs text-text-muted mt-1.5 max-w-md mx-auto leading-relaxed">
                 {gate?.state === "expired"
                   ? "Your verification for this topic has expired — knowledge lapses, which is exactly what this catches. Take the concept check above to reopen the list."
-                  : "Score 80% or better on the concept check above — 10 of its 12 questions — and these open automatically."}
+                  : "Score 80% or better on the concept check above — 10 of its 12 questions — and these open automatically. No other way in."}
               </p>
-              <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
-                {!confirmOverride ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setConfirmOverride(true)}
-                    className="text-text-faint"
-                  >
-                    Unlock anyway
-                  </Button>
-                ) : (
-                  <span className="flex items-center gap-2">
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      disabled={override.isPending}
-                      onClick={() => override.mutate("unlocked without verifying")}
-                    >
-                      {override.isPending ? "Unlocking…" : "Yes — mark as unverified"}
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setConfirmOverride(false)}>
-                      Cancel
-                    </Button>
-                  </span>
-                )}
-              </div>
-              {confirmOverride && (
-                <p className="text-[11px] text-text-faint mt-2.5">
-                  This opens the problems now and marks the topic &quot;unlocked, never
-                  verified&quot; permanently. Nothing stops you — it just stays on the record.
-                </p>
-              )}
             </div>
           )}
 

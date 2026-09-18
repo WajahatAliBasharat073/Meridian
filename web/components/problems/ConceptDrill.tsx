@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, Check, Loader2, RotateCcw, X } from "lucide-react";
+import { Brain, Check, Loader2, PartyPopper, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
@@ -23,6 +23,15 @@ const KIND_COLOR: Record<ConceptDrillKind, string> = {
   pitfall: "var(--status-partial)",
   technique: "var(--mastery-l5)",
 };
+
+/** A pass is already a real result (see the module comment on the
+ * pass-threshold's guess-floor math) — this just names it warmly instead
+ * of reporting it as a bare percentage. */
+function passHeadline(score: number): string {
+  if (score === 1) return "Perfect score!";
+  if (score >= 0.92) return "Excellent work!";
+  return "Nice work!";
+}
 
 /** The topic gate: twelve multiple-choice questions, 80% opens the
  * problems.
@@ -144,22 +153,27 @@ export function ConceptDrill({ topic, displayName }: { topic: string; displayNam
       {/* ---------------- Result ---------------- */}
       {result && (
         <>
-          <Alert variant={result.passed ? "success" : "info"}>
-            {result.correct_count}/{result.total} — {Math.round(result.score * 100)}%.{" "}
-            {result.passed ? (
-              <>
-                Passed. {displayName} is unlocked
+          {result.passed ? (
+            <div className="rounded-lg border border-status-done/30 bg-status-done/10 px-3.5 py-3">
+              <p className="text-sm font-semibold text-status-done flex items-center gap-1.5">
+                <PartyPopper size={15} className="shrink-0" />
+                {passHeadline(result.score)}
+              </p>
+              <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                {result.correct_count}/{result.total} ({Math.round(result.score * 100)}%) —
+                you&apos;re good to go with {displayName}. Its problems are unlocked
                 {result.gate?.days_until_expiry != null &&
                   ` for ${result.gate.days_until_expiry} days`}
                 .
-              </>
-            ) : (
-              <>
-                {Math.round(result.pass_threshold * 100)}% unlocks the problems — re-read
-                the guide above and take it again. Every wrong answer is explained below.
-              </>
-            )}
-          </Alert>
+              </p>
+            </div>
+          ) : (
+            <Alert variant="info">
+              {result.correct_count}/{result.total} — {Math.round(result.score * 100)}%.{" "}
+              {Math.round(result.pass_threshold * 100)}% unlocks the problems — re-read the
+              guide above and take it again. Every wrong answer is explained below.
+            </Alert>
+          )}
 
           <ol className="space-y-2">
             {result.grades.map((g, i) => (

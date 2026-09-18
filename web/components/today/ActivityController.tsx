@@ -147,11 +147,9 @@ export function ActivityController({
                 <Lock size={13} /> Locked — too late to start
               </span>
             ) : anotherSessionRunning ? (
-              <OtherSessionControls
-                session={session}
-                onPause={() => pauseActiveSession()}
-                onDiscard={() => skipActiveSession("Abandoned to start a different session")}
-              />
+              <span className="inline-flex items-center gap-1.5 text-xs text-text-faint shrink-0">
+                <Lock size={13} /> Running elsewhere — see below
+              </span>
             ) : (
               <Button
                 size="sm"
@@ -184,6 +182,19 @@ export function ActivityController({
           </div>
           {upcomingLocked && (
             <p className="text-[11px] text-text-faint mt-2">{LOCK_MESSAGE}</p>
+          )}
+          {/* A separate full-width block below the header row, not another
+              flex child squeezed in beside it -- OtherSessionControls is
+              wide (activity name + three buttons) and previously fought
+              the title for space in the same horizontal row. */}
+          {anotherSessionRunning && (
+            <div className="mt-3">
+              <OtherSessionControls
+                session={session}
+                onPause={() => pauseActiveSession()}
+                onDiscard={() => skipActiveSession("Abandoned to start a different session")}
+              />
+            </div>
           )}
         </Card>
       );
@@ -464,12 +475,9 @@ export function ActivityController({
             ) : (
               <>
                 {anotherSessionRunning ? (
-                  <OtherSessionControls
-                    session={session}
-                    onPause={handlePause}
-                    onComplete={handleCompleteOtherSessionClick}
-                    onDiscard={handleDiscardOtherSession}
-                  />
+                  <span className="inline-flex items-center gap-1.5 text-xs text-text-faint">
+                    <Lock size={13} /> Running elsewhere — see below
+                  </span>
                 ) : (
                   <Button
                     variant="primary"
@@ -574,6 +582,21 @@ export function ActivityController({
           )}
         </div>
       </div>
+
+      {/* A separate full-width block, not another flex child squeezed
+          into the timer bar above -- OtherSessionControls is wide
+          (activity name + three buttons) and previously fought the
+          countdown digits for space in the same horizontal row. */}
+      {!isBlockActive && !locked && anotherSessionRunning && (
+        <div className="mt-3">
+          <OtherSessionControls
+            session={session}
+            onPause={handlePause}
+            onComplete={handleCompleteOtherSessionClick}
+            onDiscard={handleDiscardOtherSession}
+          />
+        </div>
+      )}
 
       {/* Focus Session Rating Modal */}
       {showRatingModal && (
