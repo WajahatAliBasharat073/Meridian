@@ -12,6 +12,7 @@ records what happened.
 
 from __future__ import annotations
 
+import secrets
 import uuid
 from datetime import datetime
 from typing import Annotated
@@ -23,6 +24,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings, get_settings
 from app.db import get_session
 from app.deps import get_current_user_id
+from app.engines.concept_drill import (
+    DrillQuestion,
+    TopicGuideFixture,
+    build_bank,
+    grade_session,
+    sample_session,
+)
 from app.engines.topic_gate import (
     AttemptFixture,
     TopicGate,
@@ -43,6 +51,11 @@ from app.repositories import problems as problems_repo
 from app.schemas import (
     BuildResultOut,
     BuildSubmissionIn,
+    ConceptDrillGradeOut,
+    ConceptDrillOut,
+    ConceptDrillQuestionOut,
+    ConceptDrillResultOut,
+    ConceptDrillSubmissionIn,
     DefendGradeOut,
     DefendResultOut,
     DefendSubmissionIn,
@@ -55,6 +68,16 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/api/topics", tags=["verification"])
+
+# Score on the 12-question concept drill that unlocks a topic's problems.
+#
+# 80% is 10 of 12. With four options that is a real bar rather than a
+# formality: passing it by pure guessing is about a 4-in-100,000 event,
+# so a pass means the facts were actually known. What it does *not*
+# prove is production -- recognising that insertion is O(n) is not the
+# same as writing Kadane's from memory, and that is the trade this gate
+# accepts by being multiple choice.
+DRILL_PASS_THRESHOLD = 0.80
 
 
 def _gate_out(gate: TopicGate) -> TopicGateOut:
@@ -236,6 +259,126 @@ async def get_checklist(
         display_name=guide.display_name,
         required=[i.text for i in items],
         items=items,
+    )
+
+
+async def _drill_session(
+    session: AsyncSession, topic: str, seed: int
+) -> tuple[str, list[DrillQuestion], int]:
+    """The (topic, seed) session, regenerated rather than stored.
+
+    Both endpoints below build it the same way, which is the whole point:
+    the drill is a pure function of the guides plus a seed, so grading
+    doesn't need the questions posted back to it (and can't be fooled by
+    a client that edits them on the way).
+    """
+    guides = await problems_repo.list_topic_guides(session)
+    fixtures = [
+        TopicGuideFixture(
+            topic=g.topic,
+            display_name=g.display_name,
+            types=g.types,
+            operations=g.operations,
+            must_know=g.must_know,
+            pitfalls=g.pitfalls,
+        )
+        for g in guides
+    ]
+    mine = next((f for f in fixtures if f.topic == topic), None)
+    if mine is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown topic")
+    bank = build_bank(mine, fixtures)
+    if not bank:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This topic's guide has nothing to drill yet.",
+        )
+    return mine.display_name, sample_session(bank, seed), len(bank)
+
+
+@router.get("/{topic}/drill", response_model=ConceptDrillOut)
+async def get_concept_drill(
+    topic: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    _user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+    seed: int | None = None,
+) -> ConceptDrillOut:
+    """A multiple-choice concept drill for this topic — and the gate.
+
+    Twelve questions sampled from everything the topic's guide declares
+    (complexities, variants, pitfalls, technique selection); score
+    DRILL_PASS_THRESHOLD or better on the grade endpoint and the
+    problems open.
+    """
+    chosen_seed = seed if seed is not None else secrets.randbelow(2**31)
+    display_name, questions, bank_size = await _drill_session(session, topic, chosen_seed)
+    return ConceptDrillOut(
+        topic=topic,
+        display_name=display_name,
+        seed=chosen_seed,
+        bank_size=bank_size,
+        questions=[
+            ConceptDrillQuestionOut(id=q.id, kind=q.kind, prompt=q.prompt, options=q.options)
+            for q in questions
+        ],
+    )
+
+
+@router.post("/{topic}/drill/grade", response_model=ConceptDrillResultOut)
+async def grade_concept_drill(
+    topic: str,
+    payload: ConceptDrillSubmissionIn,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ConceptDrillResultOut:
+    """Grade the drill and settle the gate: at or above
+    DRILL_PASS_THRESHOLD the topic's problems unlock.
+
+    Graded in-process from the curated data — no LLM — so unlike the
+    old build/defend gate this can't fail to reach a verdict, and every
+    attempt is recorded either way, so the history shows what it took.
+    """
+    _, questions, _ = await _drill_session(session, topic, payload.seed)
+    result = grade_session(questions, payload.answers)
+    passed = result.score >= DRILL_PASS_THRESHOLD
+
+    now = await _now(settings)
+    attempt = await problems_repo.create_verification_attempt(session, user_id, topic, now)
+    attempt.defend_score = result.score
+    attempt.passed = passed
+    attempt.passed_at = now if passed else None
+    attempt.stage = "passed" if passed else "failed"
+    attempt.questions = [{"question": q.prompt, "kind": q.kind} for q in questions]
+    attempt.grades = [
+        {"verdict": "correct" if g.correct else "wrong", "feedback": g.explanation}
+        for g in result.graded
+    ]
+    await problems_repo.save_verification_attempt(session, attempt)
+
+    all_attempts = _fixtures(await problems_repo.get_verification_attempts(session, user_id))
+    gate = compute_gate(topic, all_attempts, now)
+
+    return ConceptDrillResultOut(
+        topic=topic,
+        score=result.score,
+        correct_count=result.correct_count,
+        total=result.total,
+        pass_threshold=DRILL_PASS_THRESHOLD,
+        passed=passed,
+        gate=_gate_out(gate),
+        grades=[
+            ConceptDrillGradeOut(
+                id=g.id,
+                prompt=g.prompt,
+                options=g.options,
+                answer_index=g.answer_index,
+                chosen_index=g.chosen_index,
+                correct=g.correct,
+                explanation=g.explanation,
+            )
+            for g in result.graded
+        ],
     )
 
 

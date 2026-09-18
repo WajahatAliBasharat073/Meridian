@@ -31,13 +31,8 @@ import type {
   TimeBlockOut,
   TopicSectionOut,
   TopicGateOut,
-  VerificationChecklistOut,
   LearningEntryOut,
   LearningEntryCreateInput,
-  BuildSubmissionInput,
-  BuildResultOut,
-  DefendSubmissionInput,
-  DefendResultOut,
   TimeBudgetOut,
   TimeBudgetUpsertInput,
   TodayOut,
@@ -78,6 +73,9 @@ import type {
   VocabWordUpdateInput,
   VocabStatusUpdateInput,
   VocabSummaryOut,
+  ConceptDrillOut,
+  ConceptDrillSubmissionInput,
+  ConceptDrillResultOut,
   OverviewOut,
   ResearchAtAGlanceOut,
   ResearchTopicOut,
@@ -212,30 +210,21 @@ export function getTopicGates(): Promise<TopicGateOut[]> {
   return request<TopicGateOut[]>("/api/topics/gates", { cache: "no-store" });
 }
 
-export function getTopicChecklist(topic: string): Promise<VerificationChecklistOut> {
-  return request<VerificationChecklistOut>(`/api/topics/${topic}/checklist`, { cache: "no-store" });
+export function getConceptDrill(topic: string, seed?: number): Promise<ConceptDrillOut> {
+  const query = seed == null ? "" : `?seed=${seed}`;
+  return request<ConceptDrillOut>(`/api/topics/${topic}/drill${query}`, { cache: "no-store" });
 }
 
-export function submitTopicBuild(
+export function gradeConceptDrill(
   topic: string,
-  input: BuildSubmissionInput
-): Promise<BuildResultOut> {
-  return request<BuildResultOut>(`/api/topics/${topic}/verify/build`, {
+  input: ConceptDrillSubmissionInput
+): Promise<ConceptDrillResultOut> {
+  return request<ConceptDrillResultOut>(`/api/topics/${topic}/drill/grade`, {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
-export function submitTopicDefend(
-  topic: string,
-  attemptId: number,
-  input: DefendSubmissionInput
-): Promise<DefendResultOut> {
-  return request<DefendResultOut>(`/api/topics/${topic}/verify/${attemptId}/defend`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
 
 export function getTopicLearning(topic: string): Promise<LearningEntryOut[]> {
   return request<LearningEntryOut[]>(`/api/topics/${topic}/learning`, { cache: "no-store" });

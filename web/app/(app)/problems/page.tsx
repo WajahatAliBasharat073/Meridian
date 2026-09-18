@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Filter, Lock, ShieldCheck } from "lucide-react";
+import { ChevronDown, Filter, Lock } from "lucide-react";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -10,10 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/ui/query-state";
+import { ConceptDrill } from "@/components/problems/ConceptDrill";
 import { DsaChecklistPanel } from "@/components/problems/DsaChecklistPanel";
 import { ProblemRow, DIFFICULTY_COLOR } from "@/components/problems/ProblemRow";
 import { TopicGuideCard } from "@/components/problems/TopicGuideCard";
-import { GateBadge, VerifyTopicDialog } from "@/components/problems/VerifyTopicDialog";
+import { GateBadge } from "@/components/problems/GateBadge";
 import { TopicLearningLog } from "@/components/problems/TopicLearningLog";
 import { useProblemsByTopic } from "@/hooks/useProblems";
 import { overrideTopicGate } from "@/lib/api";
@@ -27,7 +28,6 @@ export default function ProblemsPage() {
   const [difficulty, setDifficulty] = useState("");
   const [hideSolved, setHideSolved] = useState(false);
   const [openTopic, setOpenTopic] = useState<string | null>(null);
-  const [verifying, setVerifying] = useState<{ topic: string; displayName: string } | null>(null);
 
   const sections = useMemo(() => data ?? [], [data]);
 
@@ -48,7 +48,7 @@ export default function ProblemsPage() {
       <PageHeader
         eyebrow="Career"
         title="DSA by Topic"
-        description="Organised by data structure, not by day. Each topic's problems stay locked until you've implemented the structure and defended it closed-book — the guide always stays open."
+        description="Organised by data structure, not by day. Each topic's problems stay locked until you score 80% on its concept check — complexities, variants, pitfalls, technique selection. The guide always stays open."
       />
 
       {overall && (
@@ -151,20 +151,9 @@ export default function ProblemsPage() {
               onToggle={() =>
                 setOpenTopic((cur) => (cur === section.topic ? null : section.topic))
               }
-              onVerify={() =>
-                setVerifying({ topic: section.topic, displayName: section.display_name })
-              }
             />
           ))}
         </div>
-      )}
-
-      {verifying && (
-        <VerifyTopicDialog
-          topic={verifying.topic}
-          displayName={verifying.displayName}
-          onClose={() => setVerifying(null)}
-        />
       )}
 
       <DsaChecklistPanel />
@@ -178,14 +167,12 @@ function TopicSection({
   hideSolved,
   open,
   onToggle,
-  onVerify,
 }: {
   section: TopicSectionOut;
   difficulty: string;
   hideSolved: boolean;
   open: boolean;
   onToggle: () => void;
-  onVerify: () => void;
 }) {
   const queryClient = useQueryClient();
   const [confirmOverride, setConfirmOverride] = useState(false);
@@ -294,6 +281,9 @@ function TopicSection({
 
           <TopicLearningLog topic={section.topic} />
 
+          {/* This is the gate: 80% on the drill opens the problems below. */}
+          <ConceptDrill topic={section.topic} displayName={section.display_name} />
+
           {!isGuideOnly && locked && (
             <div className="rounded-xl border border-dashed border-border bg-surface-2/30 p-5 text-center">
               <div className="h-10 w-10 mx-auto rounded-xl bg-surface-2 border border-border flex items-center justify-center text-text-faint mb-3">
@@ -304,14 +294,10 @@ function TopicSection({
               </p>
               <p className="text-xs text-text-muted mt-1.5 max-w-md mx-auto leading-relaxed">
                 {gate?.state === "expired"
-                  ? "Your verification for this topic has expired — knowledge lapses, which is exactly what this catches. Defend it again to reopen the list."
-                  : "Implement the structure above, then defend it closed-book. Reading the guide is not the gate; being able to write it and explain your own code is."}
+                  ? "Your verification for this topic has expired — knowledge lapses, which is exactly what this catches. Take the concept check above to reopen the list."
+                  : "Score 80% or better on the concept check above — 10 of its 12 questions — and these open automatically."}
               </p>
               <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
-                <Button variant="primary" size="md" onClick={onVerify} className="gap-1.5">
-                  <ShieldCheck size={15} />
-                  {gate?.state === "expired" ? "Re-verify" : "Verify understanding"}
-                </Button>
                 {!confirmOverride ? (
                   <Button
                     variant="ghost"
@@ -351,14 +337,8 @@ function TopicSection({
               {gate?.state === "unverified_override" && (
                 <p className="text-[11px] text-status-partial flex items-center gap-1.5">
                   <Lock size={11} className="shrink-0" />
-                  Opened without verifying.{" "}
-                  <button
-                    type="button"
-                    onClick={onVerify}
-                    className="underline hover:text-text"
-                  >
-                    Verify it properly
-                  </button>
+                  Opened without verifying — the concept check above still clears it
+                  properly.
                 </p>
               )}
               {shown.length === 0 ? (

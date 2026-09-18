@@ -149,6 +149,53 @@ export interface VerificationChecklistOut {
   items: VerificationChecklistItemOut[];
 }
 
+export type ConceptDrillKind = "complexity" | "variant" | "pitfall" | "technique";
+
+export interface ConceptDrillQuestionOut {
+  id: string;
+  kind: ConceptDrillKind;
+  prompt: string;
+  options: string[];
+}
+
+export interface ConceptDrillOut {
+  topic: string;
+  display_name: string;
+  /** Echoed back on submit — the session isn't stored server-side, it's
+   * regenerated from (topic, seed) to grade. */
+  seed: number;
+  questions: ConceptDrillQuestionOut[];
+  bank_size: number;
+}
+
+export interface ConceptDrillSubmissionInput {
+  seed: number;
+  answers: (number | null)[];
+}
+
+export interface ConceptDrillGradeOut {
+  id: string;
+  prompt: string;
+  options: string[];
+  answer_index: number;
+  chosen_index: number | null;
+  correct: boolean;
+  explanation: string;
+}
+
+export interface ConceptDrillResultOut {
+  topic: string;
+  score: number;
+  correct_count: number;
+  total: number;
+  pass_threshold: number;
+  /** At or above pass_threshold the topic's problems unlock — the drill
+   * is the gate, so the result carries the new gate state with it. */
+  passed: boolean;
+  gate: TopicGateOut | null;
+  grades: ConceptDrillGradeOut[];
+}
+
 export interface BuildSubmissionInput {
   code: string;
   notes?: string;

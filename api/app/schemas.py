@@ -879,6 +879,56 @@ class VerificationChecklistOut(BaseModel):
     items: list[VerificationChecklistItemOut] = Field(default_factory=list)
 
 
+class ConceptDrillQuestionOut(BaseModel):
+    """One MCQ as the client sees it -- deliberately without the answer.
+    The session isn't stored; grading regenerates it from (topic, seed),
+    so sending the answer index up front would be the only way to leak it."""
+
+    id: str
+    kind: str
+    prompt: str
+    options: list[str] = Field(default_factory=list)
+
+
+class ConceptDrillOut(BaseModel):
+    topic: str
+    display_name: str
+    # Echoed back so the client can submit the same seed it was served,
+    # which is what makes stateless grading possible.
+    seed: int
+    questions: list[ConceptDrillQuestionOut] = Field(default_factory=list)
+    bank_size: int
+
+
+class ConceptDrillSubmissionIn(BaseModel):
+    seed: int
+    # One entry per question, in order; null for unanswered.
+    answers: list[int | None] = Field(default_factory=list)
+
+
+class ConceptDrillGradeOut(BaseModel):
+    id: str
+    prompt: str
+    options: list[str] = Field(default_factory=list)
+    answer_index: int
+    chosen_index: int | None = None
+    correct: bool
+    explanation: str = ""
+
+
+class ConceptDrillResultOut(BaseModel):
+    topic: str
+    score: float
+    correct_count: int
+    total: int
+    pass_threshold: float
+    # At or above pass_threshold the topic's problems unlock -- the drill
+    # *is* the gate, so the result carries the new gate state with it.
+    passed: bool
+    gate: TopicGateOut | None = None
+    grades: list[ConceptDrillGradeOut] = Field(default_factory=list)
+
+
 class BuildSubmissionIn(BaseModel):
     code: str = Field(min_length=1)
     notes: str = ""
