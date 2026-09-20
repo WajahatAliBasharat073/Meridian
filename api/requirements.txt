@@ -1,7 +1,7 @@
 # Runtime dependencies only. Pinned to minor version; exact resolved set is
 # locked in requirements.lock (generated: pip freeze > requirements.lock).
 fastapi==0.141.*
-uvicorn[standard]==0.52.*
+uvicorn[standard]==0.53.*
 pydantic==2.13.*
 pydantic-settings==2.15.*
 sqlalchemy==2.0.*
