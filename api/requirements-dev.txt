@@ -7,7 +7,7 @@ ruff==0.16.*
 mypy==2.3.*
 types-python-dateutil==2.9.0.*
 types-python-jose==3.5.*
-faker==40.38.*
+faker==40.39.*
 # In-memory async DB driver for repository/router tests only — never a
 # substitute for Postgres in dev or prod, just avoids needing a live
 # container for every test run.
