@@ -4,7 +4,7 @@ fastapi==0.141.*
 uvicorn[standard]==0.52.*
 pydantic==2.13.*
 pydantic-settings==2.15.*
-sqlalchemy==2.0.*
+sqlalchemy==2.1.*
 asyncpg==0.31.*
 alembic==1.19.*
 openpyxl==3.1.*
