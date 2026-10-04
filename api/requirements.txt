@@ -1,6 +1,6 @@
 # Runtime dependencies only. Pinned to minor version; exact resolved set is
 # locked in requirements.lock (generated: pip freeze > requirements.lock).
-fastapi==0.141.*
+fastapi==0.142.*
 uvicorn[standard]==0.52.*
 pydantic==2.13.*
 pydantic-settings==2.15.*
